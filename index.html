@@ -10,17 +10,17 @@
 <style>
 :root {
   --bg: #fbfaf7; --surface: #ffffff; --sunk: #f1efe9; --fg: #1d1c19; --muted: #66625a; --line: #e2ded4;
-  --accent: #c2410c; --accent-soft: #fbe5d6; --ours: #c2410c; --base: #2f4b7c; --stage: #ffffff;
+  --accent: #4183c4; --accent-soft: #dce9f6; --ours: #4183c4; --base: #6b6b6b; --stage: #ffffff;
   --note-bg: #fff6e0; --note-fg: #6b4e00; --note-line: #f0d48a;
   --radius: 10px; --wrap: 1080px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #15140f; --surface: #1d1c17; --sunk: #25231d; --fg: #ece9e1; --muted: #a39e92; --line: #34312a;
-  --accent: #fb923c; --accent-soft: #3a2414; --ours: #fb923c; --base: #8fb0e8; --stage: #ffffff;
+  --accent: #79aee6; --accent-soft: #16273a; --ours: #79aee6; --base: #b4b4b4; --stage: #ffffff;
   --note-bg: #2b2412; --note-fg: #f2d68a; --note-line: #5a4a1e; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #15140f; --surface: #1d1c17; --sunk: #25231d; --fg: #ece9e1; --muted: #a39e92; --line: #34312a;
-  --accent: #fb923c; --accent-soft: #3a2414; --ours: #fb923c; --base: #8fb0e8; --stage: #ffffff;
+  --accent: #79aee6; --accent-soft: #16273a; --ours: #79aee6; --base: #b4b4b4; --stage: #ffffff;
   --note-bg: #2b2412; --note-fg: #f2d68a; --note-line: #5a4a1e; color-scheme: dark }
 * { box-sizing: border-box }
 body { background: var(--bg); color: var(--fg); font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -44,7 +44,7 @@ section { padding-block: 56px; border-top: 1px solid var(--line) }
 /* hero */
 .hero { text-align: center; padding-block: 56px 36px }
 .hero h1 { font-size: clamp(2rem, 5.4vw, 3.4rem); letter-spacing: -0.02em }
-.hero h1 .name { color: var(--accent) }
+.hero h1 .name { color: var(--fg) }
 .hero .sub { font: 500 clamp(1.05rem, 2.4vw, 1.4rem)/1.35 "Space Grotesk", Inter, sans-serif; margin-top: 10px }
 .authors { margin-top: 18px; color: var(--muted) }
 .venue { margin-top: 4px; font-size: 0.92rem; color: var(--muted) }
@@ -119,7 +119,7 @@ section { padding-block: 56px; border-top: 1px solid var(--line) }
   background: #111; color: #fff; display: grid; place-items: center; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.3); outline-offset: 3px }
 .handle:focus-visible { outline: 2px solid var(--accent) }
 .tag { position: absolute; top: 10px; padding: 4px 9px; border-radius: 6px; font: 600 0.78rem Inter, sans-serif; color: #fff; pointer-events: none }
-.tag.l { left: 10px; background: #c2410c } .tag.r { right: 10px; background: #2f4b7c }
+.tag.l { left: 10px; background: #4183c4 } .tag.r { right: 10px; background: #6b6b6b }
 .cmp-foot { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 12px; color: var(--muted); font-size: 0.86rem }
 
 /* gallery */
@@ -6201,8 +6201,7 @@ function pickScene(id) {
 }
 for (const s of SCN) {
   const b = document.createElement("button"); b.className = "thumb"; b.dataset.id = s.id; b.setAttribute("aria-pressed", "false");
-  b.innerHTML = '<img alt="" loading="lazy"><span></span>'; b.querySelector("img").src = s.thumb;
-  b.querySelector("span").textContent = s.label + (s.objects.length > 1 ? " · " + s.objects.length + " objects" : "");
+  b.innerHTML = '<img alt="" loading="lazy">'; b.querySelector("img").src = s.thumb; b.setAttribute("aria-label", s.label);
   b.addEventListener("click", () => pickScene(s.id)); thumbs.appendChild(b);
 }
 pickScene(SCN[0].id);
