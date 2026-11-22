@@ -264,7 +264,7 @@ class Viewer4D {
     gl.useProgram(p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
     for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
-    for (const [seg, px, col] of [[path, 1.2, [0.2, 0.2, 0.2, 0.55]], [fr, 2.2, [0.76, 0.25, 0.05, 1.0]]]) {
+    for (const [seg, px, col] of [[path, 1.2, [0.2, 0.2, 0.2, 0.55]], [fr, 2.2, [0.255, 0.514, 0.769, 1.0]]]) {
       const q = this.thickLines(seg, M, W, H, px * devicePixelRatio); if (!q.length) continue;
       gl.bufferData(gl.ARRAY_BUFFER, q, gl.DYNAMIC_DRAW); gl.uniform4f(U("uCol"), ...col); gl.drawArrays(gl.TRIANGLES, 0, q.length / 4);
     }
