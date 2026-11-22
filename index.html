@@ -143,6 +143,19 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
   .inset-label { display: none }
 }
 .scene-vid{width:min(100%,calc(58vh*16/9));aspect-ratio:16/9;max-height:58vh;object-fit:contain;background:#fff;border-radius:10px;display:block;margin:0 auto}
+/* comparison grid (all methods, shared rotation) */
+.cg-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px }
+.cg-bar .cg-note { color: var(--muted); font-size: 0.85rem; margin-left: auto }
+.cg-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch }
+.cg { display: grid; grid-template-columns: 30px repeat(5, minmax(92px, 1fr)); gap: 4px 6px; min-width: 520px; touch-action: pan-y; user-select: none; cursor: grab }
+.cg:active { cursor: grabbing }
+.cg .lab { writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: center; justify-content: center;
+  font: 600 0.74rem/1.1 Inter, sans-serif; color: var(--muted); text-align: center; white-space: nowrap }
+.cg .lab.ours { color: var(--ours) }
+.cg canvas { width: 100%; aspect-ratio: 1; display: block; background: var(--stage); border-radius: 6px; border: 1px solid var(--line) }
+.cg canvas.in { border-color: var(--fg) }
+.cg canvas.ours { border: 2px solid var(--ours) }
+.cg .sep { grid-column: 1 / -1; height: 4px }
 </style>
 </head>
 <body>
@@ -256,6 +269,23 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
       <span id="cmp-note">Renders on white background, 12 fps.</span>
       <button class="ctl" id="cmp-play">Pause</button>
     </div>
+  </div>
+</section>
+
+<section id="compare-grid">
+  <div class="wrap">
+    <div class="head">
+      <div class="kicker">Interactive · all methods</div>
+      <h2>Every method, rotating together</h2>
+      <p class="lede">Columns are input videos, rows are methods. <b>Drag any object</b> to turn every reconstruction in the grid at once: all renders share the same camera ring around the object, starting from the input view. White background, 12 fps.</p>
+    </div>
+    <div class="cg-bar">
+      <button class="chip" id="cg-play" aria-pressed="true">Playing</button>
+      <button class="chip" id="cg-spin" aria-pressed="true">Auto-rotate</button>
+      <button class="chip" id="cg-reset">Input view</button>
+      <span class="cg-note" id="cg-az">azimuth 0°</span>
+    </div>
+    <div class="cg-scroll"><div class="cg" id="cg" aria-label="Comparison grid: drag horizontally to rotate all reconstructions"></div></div>
   </div>
 </section>
 
@@ -5003,6 +5033,45 @@ for (const s of SCN) {
   b.addEventListener("click", () => pickScene(s.id)); thumbs.appendChild(b);
 }
 pickScene(SCN[0].id);
+</script>
+<script>
+/* ---------- comparison grid: one packed video per clip, shared azimuth ---------- */
+(() => {
+  const CLIPS = ["camel", "dog", "horsejump-high", "libby", "robot"];
+  const METH = [["ours","Ours"],["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
+                ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
+  const T = 160, COLS = 12, NA = 24, grid = document.getElementById("cg"), vids = {}, cells = [];
+  const row = (label, cls, tile) => {
+    const l = document.createElement("div"); l.className = "lab " + cls; l.textContent = label; grid.appendChild(l);
+    for (const c of CLIPS) { const cv = document.createElement("canvas"); cv.width = cv.height = T; cv.className = cls; grid.appendChild(cv); cells.push([cv.getContext("2d"), c, tile]); }
+  };
+  row("Input", "in", -1); METH.forEach(([id, name], i) => row(name, i ? "" : "ours", i));
+  for (const c of CLIPS) { const v = document.createElement("video"); Object.assign(v, { muted: true, loop: true, playsInline: true, preload: "none" });
+    v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.dataset.src = "static/cmpgrid/" + c + ".mp4"; vids[c] = v; }
+  let az = 0, playing = true, spin = true, lastUser = -1e9, started = false, visible = false;
+  const azLab = document.getElementById("cg-az");
+  function draw() {
+    const k = ((Math.round(az) % NA) + NA) % NA;
+    for (const [ctx, c, m] of cells) { const v = vids[c]; if (v.readyState < 2) continue;
+      if (m < 0) ctx.drawImage(v, 0, 2 * METH.length * T, T, T, 0, 0, T, T);
+      else ctx.drawImage(v, (k % COLS) * T, (2 * m + Math.floor(k / COLS)) * T, T, T, 0, 0, T, T); }
+    azLab.textContent = "azimuth " + (k * 360 / NA) + "°";
+  }
+  function tick(now) { if (visible) { if (spin && playing && now - lastUser > 2500) az += 0.04; draw(); } requestAnimationFrame(tick); }
+  const start = () => { if (started) return; started = true; for (const v of Object.values(vids)) { v.src = v.dataset.src; v.preload = "auto"; } };
+  const setPlay = p => { playing = p; for (const v of Object.values(vids)) p && visible ? v.play().catch(() => {}) : v.pause();
+    const b = document.getElementById("cg-play"); b.textContent = p ? "Playing" : "Paused"; b.setAttribute("aria-pressed", String(p)); };
+  new IntersectionObserver(es => { visible = es[0].isIntersecting; if (visible) start(); setPlay(playing); }, { rootMargin: "200px" }).observe(grid);
+  let x0 = null, az0 = 0;
+  grid.addEventListener("pointerdown", e => { x0 = e.clientX; az0 = az; lastUser = performance.now(); grid.setPointerCapture(e.pointerId); });
+  grid.addEventListener("pointermove", e => { if (x0 === null) return; lastUser = performance.now(); az = az0 - (e.clientX - x0) / grid.getBoundingClientRect().width * NA * 1.5; });
+  const up = () => { x0 = null; lastUser = performance.now(); }; grid.addEventListener("pointerup", up); grid.addEventListener("pointercancel", up);
+  grid.tabIndex = 0; grid.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { az += e.key === "ArrowLeft" ? -1 : 1; lastUser = performance.now(); e.preventDefault(); } });
+  document.getElementById("cg-play").onclick = () => setPlay(!playing);
+  document.getElementById("cg-spin").onclick = e => { spin = !spin; e.currentTarget.setAttribute("aria-pressed", String(spin)); };
+  document.getElementById("cg-reset").onclick = () => { az = 0; lastUser = performance.now(); };
+  requestAnimationFrame(tick);
+})();
 </script>
 
 </body>
