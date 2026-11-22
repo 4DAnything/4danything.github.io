@@ -156,6 +156,33 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
 .cg canvas.in { border-color: var(--fg) }
 .cg canvas.ours { border: 2px solid var(--ours) }
 .cg .sep { grid-column: 1 / -1; height: 4px }
+/* in-scene comparison: ours | one baseline, shared scene + camera */
+.scmp-ctl { display: grid; gap: 12px; margin: 16px 0 }
+.scmp .stage4d { overflow: hidden }
+.scmp .loading { pointer-events: none }
+[hidden] { display: none !important }
+.scmp-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(17,17,17,.35); pointer-events: none }
+.scmp-handle { position: absolute; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: #fff; color: #111;
+  border: 1px solid rgba(17,17,17,.35); display: grid; place-items: center; font: 700 1rem Inter, sans-serif; cursor: ew-resize; touch-action: none; user-select: none }
+.scmp-tag { position: absolute; top: 10px; padding: 3px 9px; border-radius: 6px; font: 600 0.78rem Inter, sans-serif; color: #fff; pointer-events: none }
+.scmp-tag.l { left: 12px; background: var(--ours) } .scmp-tag.r { right: 12px; background: var(--base) }
+.scmp-empty { padding: 28px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius) }
+/* sliding comparison: one large clip per slide, ours | baseline split, rotatable */
+.cs-car { position: relative; max-width: 980px; margin: 16px auto 0 }
+.cs-view { overflow: hidden; border-radius: var(--radius) }
+.cs-track { display: flex; transition: transform .45s ease }
+.cs-slide { flex: 0 0 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; align-items: center; padding: 4px 56px }
+.cs-slide video.inp { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--stage) }
+.cs-cell { position: relative; width: 100%; aspect-ratio: 1; max-width: 100% }
+.cs-cell canvas { width: 100%; height: 100%; display: block; background: #fff; border: 1px solid var(--line); border-radius: 8px; cursor: grab; touch-action: none }
+.cs-cell .scmp-tag { top: 8px }
+.cs-cap { grid-column: 1 / -1; text-align: center; font: 600 0.85rem Inter, sans-serif; color: var(--muted) }
+.cs-arrow { position: absolute; top: 45%; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 700 1.1rem Inter, sans-serif; cursor: pointer; z-index: 2 }
+.cs-arrow.prev { left: 4px } .cs-arrow.next { right: 4px }
+.cs-dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px }
+.cs-dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: var(--line); cursor: pointer }
+.cs-dots button[aria-current=true] { background: var(--ours) }
+@media (max-width: 640px) { .cs-slide { grid-template-columns: 1fr; padding: 4px 8px } .cs-slide video.inp { width: 40%; justify-self: center } .cs-arrow { top: auto; bottom: -46px } }
 </style>
 </head>
 <body>
@@ -286,6 +313,55 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
       <span class="cg-note" id="cg-az">azimuth 0°</span>
     </div>
     <div class="cg-scroll"><div class="cg" id="cg" aria-label="Comparison grid: drag horizontally to rotate all reconstructions"></div></div>
+  </div>
+</section>
+
+<section id="compare-slides">
+  <div class="wrap">
+    <div class="head">
+      <div class="kicker">Interactive · one video at a time</div>
+      <h2>Ours vs. each baseline, side by side</h2>
+      <p class="lede">One video per slide. <b style="color:var(--ours)">Ours</b> is left of the divider, the selected <b style="color:var(--base)">baseline</b> right, both at the same viewpoint. Drag the object to rotate both, drag the ⇔ handle to wipe, use the arrows to change video.</p>
+    </div>
+    <div class="row"><span class="row-label">Baseline</span><div class="row" id="cs-bases"></div></div>
+    <div class="cs-car">
+      <button class="cs-arrow prev" aria-label="Previous video">‹</button>
+      <div class="cs-view"><div class="cs-track" id="cs-track"></div></div>
+      <button class="cs-arrow next" aria-label="Next video">›</button>
+    </div>
+    <div class="cs-dots" id="cs-dots"></div>
+  </div>
+</section>
+
+<section id="scene-compare">
+  <div class="wrap">
+    <div class="head">
+      <div class="kicker">Interactive · in the scene</div>
+      <h2>Ours vs. a baseline, in the same scene</h2>
+      <p class="lede">Each method's reconstruction placed in the reconstructed scene, in its own appearance. <b style="color:var(--ours)">Ours</b> is left of the divider, the selected <b style="color:var(--base)">baseline</b> right; both share the scene points and the camera. Drag the ⇔ handle to wipe, drag elsewhere to orbit, scroll to zoom.</p>
+    </div>
+    <div class="scmp-ctl">
+      <div class="row"><span class="row-label">Video</span><div class="row" id="scmp-clips"></div></div>
+      <div class="row"><span class="row-label">Baseline</span><div class="row" id="scmp-bases"></div></div>
+    </div>
+    <div class="viewer scmp" id="v4c">
+      <div class="stage4d">
+        <canvas aria-label="In-scene comparison: drag to orbit, scroll to zoom, drag the handle to compare"></canvas>
+        <video data-v="inset" class="inset" muted loop playsinline hidden></video>
+        <div class="scmp-line"></div><div class="scmp-handle" role="slider" tabindex="0" aria-label="Comparison divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">⇔</div>
+        <span class="scmp-tag l">Ours</span><span class="scmp-tag r" id="scmp-tag">Baseline</span>
+        <div class="loading" data-v="load">Loading…</div>
+      </div>
+      <div class="bar">
+        <button class="ctl" data-v="play">Pause</button>
+        <input type="range" data-v="frame" min="0" max="0" value="0" aria-label="Frame">
+        <span class="fno" data-v="fno">1 / 1</span>
+        <label class="chk"><input type="checkbox" data-v="scene" checked> scene points</label>
+        <label class="chk"><input type="checkbox" data-v="cam" checked> input camera</label>
+        <button class="ctl" data-v="reset">Reset view</button>
+      </div>
+    </div>
+    <p class="scmp-empty" id="scmp-empty" hidden>The in-scene comparison loads on the built site (its data is too large for this draft).</p>
   </div>
 </section>
 
@@ -5070,6 +5146,103 @@ pickScene(SCN[0].id);
   document.getElementById("cg-spin").onclick = e => { spin = !spin; e.currentTarget.setAttribute("aria-pressed", String(spin)); };
   document.getElementById("cg-reset").onclick = () => { az = 0; lastUser = performance.now(); };
   requestAnimationFrame(tick);
+})();
+</script>
+<script>
+/* ---------- in-scene comparison: Viewer4DCmp, ours | one baseline ---------- */
+(() => {
+  const DATA = window.SCMP_DATA || [], root = document.getElementById("v4c");
+  const SB = [["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
+                 ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
+  if (!DATA.length || !window.Viewer4DCmp) { root.hidden = true; document.getElementById("scmp-empty").hidden = false; return; }
+  const v = new Viewer4DCmp(root, { bg: [1, 1, 1] }), st = { clip: DATA[0].id, base: null };
+  const stage = root.querySelector(".stage4d"), line = root.querySelector(".scmp-line"), handle = root.querySelector(".scmp-handle");
+  const setSplit = x => { v.split = Math.min(0.98, Math.max(0.02, x)); line.style.left = handle.style.left = (v.split * 100) + "%";
+    handle.setAttribute("aria-valuenow", String(Math.round(v.split * 100))); };
+  setSplit(0.5);
+  handle.addEventListener("pointerdown", e => { handle.setPointerCapture(e.pointerId); e.stopPropagation(); });
+  handle.addEventListener("pointermove", e => { if (!handle.hasPointerCapture(e.pointerId)) return; const r = stage.getBoundingClientRect(); setSplit((e.clientX - r.left) / r.width); });
+  handle.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { setSplit(v.split + (e.key === "ArrowLeft" ? -0.05 : 0.05)); e.preventDefault(); } });
+  const chipRow = (el, items, onPick) => { el.innerHTML = ""; for (const [id, name] of items) { const b = document.createElement("button");
+    b.className = "chip"; b.dataset.id = id; b.textContent = name; b.addEventListener("click", () => onPick(id)); el.appendChild(b); } };
+  const press = (el, id) => el.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.id === id)));
+  const clipEl = document.getElementById("scmp-clips"), baseEl = document.getElementById("scmp-bases");
+  function pickBase(id) { const c = DATA.find(c => c.id === st.clip); if (!c.methods[id]) return; st.base = id; press(baseEl, id);
+    document.getElementById("scmp-tag").textContent = SB.find(b => b[0] === id)[1]; v.loadBaseline(c.methods[id], SB.find(b => b[0] === id)[1]); }
+  async function pickClip(id) { st.clip = id; press(clipEl, id); const c = DATA.find(c => c.id === id);
+    baseEl.querySelectorAll(".chip").forEach(b => b.disabled = !c.methods[b.dataset.id]);
+    await v.load({ label: c.label, objects: c.methods.ours, scene: c.scene, input: c.input, cams: c.cams });
+    pickBase(c.methods[st.base] ? st.base : SB.find(b => c.methods[b[0]])[0]); }
+  chipRow(clipEl, DATA.map(c => [c.id, c.label]), pickClip); chipRow(baseEl, SB, pickBase);
+  let started = false;
+  new IntersectionObserver(es => { if (es[0].isIntersecting && !started) { started = true; pickClip(DATA[0].id); } }, { rootMargin: "300px" }).observe(root);
+})();
+</script>
+<script>
+/* ---------- sliding comparison: per-clip ours | baseline turntable sprites ---------- */
+(() => {
+  const CS_CLIPS = [["camel","Camel"],["dog","Dog"],["horsejump-high","Horse jump"],["libby","Libby"],["robot","Robot"]];
+  const SB = [["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
+                 ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
+  const D = "static/cmpslide/", track = document.getElementById("cs-track"), dots = document.getElementById("cs-dots");
+  const st = { i: 0, base: "lift4d", az: 0, split: 0.5, idle: 0 };
+  const mkVid = () => { const v = document.createElement("video"); v.muted = true; v.loop = true; v.playsInline = true; v.preload = "none"; return v; };
+  const slides = CS_CLIPS.map(([id, label], i) => {
+    const el = document.createElement("div"); el.className = "cs-slide"; el.setAttribute("aria-roledescription", "slide"); el.setAttribute("aria-label", label);
+    el.innerHTML = '<video class="inp" muted loop playsinline preload="none"></video><div class="cs-cell"><canvas width="768" height="768" aria-label="Ours vs. baseline: drag to rotate"></canvas>' +
+      '<span class="scmp-tag l">Ours</span><span class="scmp-tag r"></span><div class="scmp-line"></div><div class="scmp-handle" role="slider" tabindex="0" aria-label="Comparison divider">⇔</div></div>' +
+      '<div class="cs-cap"></div>';
+    el.querySelector(".cs-cap").textContent = label; track.appendChild(el);
+    const d = document.createElement("button"); d.setAttribute("aria-label", "Show " + label); d.addEventListener("click", () => go(i)); dots.appendChild(d);
+    return { id, el, inp: el.querySelector("video.inp"), cv: el.querySelector("canvas"), ours: mkVid(), base: mkVid(), meta: null, cell: el.querySelector(".cs-cell") };
+  });
+  const S = () => slides[st.i];
+  function setSplit(x) { st.split = Math.min(0.98, Math.max(0.02, x));
+    for (const s of slides) { s.el.querySelector(".scmp-line").style.left = s.el.querySelector(".scmp-handle").style.left = (st.split * 100) + "%"; } }
+  function loadBase(s) { s.base.src = D + s.id + "/" + st.base + ".mp4"; s.el.querySelector(".scmp-tag.r").textContent = SB.find(b => b[0] === st.base)[1];
+    s.base.play().catch(() => {}); }
+  async function activate(s) {
+    if (!s.meta) { s.meta = { tile: 256, cols: 6 };
+      s.ours.src = D + s.id + "/ours.mp4"; s.inp.src = D + s.id + "/input.mp4"; loadBase(s); }
+    for (const v of [s.ours, s.base, s.inp]) { v.currentTime = 0; v.play().catch(() => {}); }
+  }
+  function go(i) {
+    const prev = S(); for (const v of [prev.ours, prev.base, prev.inp]) v.pause();
+    st.i = (i + slides.length) % slides.length; track.style.transform = "translateX(" + (-100 * st.i) + "%)";
+    [...dots.children].forEach((d, k) => d.setAttribute("aria-current", String(k === st.i))); activate(S());
+  }
+  document.querySelector("#compare-slides .prev").addEventListener("click", () => go(st.i - 1));
+  document.querySelector("#compare-slides .next").addEventListener("click", () => go(st.i + 1));
+  const bEl = document.getElementById("cs-bases");
+  for (const [id, name] of SB) { const b = document.createElement("button"); b.className = "chip"; b.dataset.id = id; b.textContent = name;
+    b.addEventListener("click", () => { st.base = id; bEl.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.id === id)));
+      for (const s of slides) if (s.meta) loadBase(s); }); bEl.appendChild(b); }
+  bEl.querySelector('[data-id="' + st.base + '"]').setAttribute("aria-pressed", "true");
+  for (const s of slides) {
+    let drag = null; const h = s.el.querySelector(".scmp-handle");
+    h.addEventListener("pointerdown", e => { h.setPointerCapture(e.pointerId); e.stopPropagation(); });
+    h.addEventListener("pointermove", e => { if (h.hasPointerCapture(e.pointerId)) { const r = s.cell.getBoundingClientRect(); setSplit((e.clientX - r.left) / r.width); } });
+    h.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { setSplit(st.split + (e.key === "ArrowLeft" ? -0.05 : 0.05)); e.preventDefault(); } });
+    s.cv.addEventListener("pointerdown", e => { drag = { x: e.clientX, az: st.az }; s.cv.setPointerCapture(e.pointerId); });
+    s.cv.addEventListener("pointermove", e => { if (drag) { st.az = drag.az - (e.clientX - drag.x) / s.cv.clientWidth * 24; st.idle = performance.now(); } });
+    s.cv.addEventListener("pointerup", () => { drag = null; });
+  }
+  setSplit(0.5);
+  function draw() {
+    const s = S(), m = s.meta, c = s.cv.getContext("2d"), W = s.cv.width, H = s.cv.height;
+    if (performance.now() - st.idle > 2500) st.az += 0.04;
+    if (m && s.ours.readyState >= 2) {
+      if (s.base.readyState >= 2 && Math.abs(s.base.currentTime - s.ours.currentTime) > 0.15) s.base.currentTime = s.ours.currentTime;
+      const k = ((Math.round(st.az) % 24) + 24) % 24, T = m.tile, sx = (k % m.cols) * T, sy = Math.floor(k / m.cols) * T, x = Math.round(W * st.split);
+      c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
+      c.save(); c.beginPath(); c.rect(0, 0, x, H); c.clip(); c.drawImage(s.ours, sx, sy, T, T, 0, 0, W, H); c.restore();
+      if (s.base.readyState >= 2) { c.save(); c.beginPath(); c.rect(x, 0, W - x, H); c.clip(); c.drawImage(s.base, sx, sy, T, T, 0, 0, W, H); c.restore(); }
+    }
+    requestAnimationFrame(draw);
+  }
+  let started = false;
+  new IntersectionObserver(es => { if (es[0].isIntersecting && !started) { started = true; go(0); requestAnimationFrame(draw); } }, { rootMargin: "300px" })
+    .observe(document.getElementById("compare-slides"));
 })();
 </script>
 

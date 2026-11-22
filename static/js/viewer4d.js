@@ -132,7 +132,7 @@ class Viewer4D {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     this.frames = []; this.sorted = []; this.epoch = 0; this.cur = 0; this.playing = true; this.fps = 8;
     this.sceneN = 0; this.showScene = true; this.visible = true; this.token = 0;
-    this.bg = opts.bg || [1, 1, 1]; this.speed = opts.speed || 0.5;
+    this.bg = opts.bg || [1, 1, 1]; this.speed = opts.speed || 1.0;
     this.bindControls(); this.loop();
     new IntersectionObserver(es => { this.visible = es[0].isIntersecting; }, { rootMargin: "200px" }).observe(root);
   }
@@ -219,8 +219,8 @@ class Viewer4D {
       -(V[0]*ex + V[1]*ey + V[2]*ez), -(V[3]*ex + V[4]*ey + V[5]*ez), -(V[6]*ex + V[7]*ey + V[8]*ez), 1]);
   }
 
-  sortFrame(f, view) {
-    const fr = this.frames[f], n = fr.n, d = new Float32Array(n), vz = [view[2], view[6], view[10]];
+  sortFrame(f, view, frames = this.frames, sorted = this.sorted) {
+    const fr = frames[f], n = fr.n, d = new Float32Array(n), vz = [view[2], view[6], view[10]];
     let mn = Infinity, mx = -Infinity;
     for (let i = 0; i < n; i++) { const v = vz[0]*fr.pos[i*3] + vz[1]*fr.pos[i*3+1] + vz[2]*fr.pos[i*3+2]; d[i] = v; if (v < mn) mn = v; if (v > mx) mx = v; }
     const B = 65536, sc = (B - 1) / Math.max(mx - mn, 1e-9), key = new Uint32Array(n), cnt = new Uint32Array(B + 1);
@@ -229,50 +229,64 @@ class Viewer4D {
     const idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[cnt[key[i]]++] = i;
     const src = new Uint32Array(fr.raw), out = new Uint32Array(n * 8);
     for (let i = 0; i < n; i++) { const s = idx[i] * 8, o = i * 8; for (let k = 0; k < 8; k++) out[o+k] = src[s+k]; }
-    this.sorted[f] = { buf: out, epoch: this.epoch };
+    sorted[f] = { buf: out, epoch: this.epoch };
   }
 
-  draw() {
+  drawBegin() {
     const gl = this.gl, cv = this.canvas, w = Math.round(cv.clientWidth * devicePixelRatio), h = Math.round(cv.clientHeight * devicePixelRatio);
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     gl.viewport(0, 0, w, h); gl.clearColor(this.bg[0], this.bg[1], this.bg[2], 1);
     gl.depthMask(true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    if (!this.frames.length) return;
+    if (!this.V3) return { w, h };
     const view = this.viewMatrix(), f = 1 / Math.tan(25 * Math.PI / 180), nr = 0.02, fa = 100;
-    const proj = new Float32Array([f*h/w,0,0,0, 0,-f,0,0, 0,0,(fa+nr)/(fa-nr),1, 0,0,-2*fa*nr/(fa-nr),0]);
-    const scene = this.sceneN && this.showScene;
+    return { w, h, f, view, proj: new Float32Array([f*h/w,0,0,0, 0,-f,0,0, 0,0,(fa+nr)/(fa-nr),1, 0,0,-2*fa*nr/(fa-nr),0]) };
+  }
+
+  drawScene(V) {
+    const gl = this.gl, b = this.sceneBox, p = this.sprog, U = n => gl.getUniformLocation(p, n);
     for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
-    if (scene) {
-      const b = this.sceneBox, p = this.sprog, U = n => gl.getUniformLocation(p, n);
-      gl.useProgram(p); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-      gl.uniformMatrix4fv(U("uView"), false, view); gl.uniformMatrix4fv(U("uProj"), false, proj);
-      gl.uniform3f(U("uMin"), b[0], b[1], b[2]); gl.uniform3f(U("uExt"), b[3]-b[0], b[4]-b[1], b[5]-b[2]);   // aP is normalized to 0..1
-      gl.uniform1f(U("uPt"), 2.0 * devicePixelRatio);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.sPos); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.UNSIGNED_SHORT, true, 0, 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.sCol); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.UNSIGNED_BYTE, true, 0, 0);
-      gl.drawArrays(gl.POINTS, 0, this.sceneN); gl.disableVertexAttribArray(0); gl.disableVertexAttribArray(1);
-    }
-    const s = this.sorted[this.cur];
-    if (!s || s.epoch !== this.epoch) this.sortFrame(this.cur, view);
-    const p = this.prog, U = n => gl.getUniformLocation(p, n), fr = this.frames[this.cur];
+    gl.useProgram(p); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
+    gl.uniformMatrix4fv(U("uView"), false, V.view); gl.uniformMatrix4fv(U("uProj"), false, V.proj);
+    gl.uniform3f(U("uMin"), b[0], b[1], b[2]); gl.uniform3f(U("uExt"), b[3]-b[0], b[4]-b[1], b[5]-b[2]);   // aP is normalized to 0..1
+    gl.uniform1f(U("uPt"), 2.0 * devicePixelRatio);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sPos); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.UNSIGNED_SHORT, true, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sCol); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.UNSIGNED_BYTE, true, 0, 0);
+    gl.drawArrays(gl.POINTS, 0, this.sceneN); gl.disableVertexAttribArray(0); gl.disableVertexAttribArray(1);
+  }
+
+  drawObjs(V, frames, sorted, cur, scene) {
+    if (!frames.length) return;
+    const gl = this.gl; cur = Math.min(cur, frames.length - 1);
+    const s = sorted[cur]; if (!s || s.epoch !== this.epoch) this.sortFrame(cur, V.view, frames, sorted);
+    const p = this.prog, U = n => gl.getUniformLocation(p, n), fr = frames[cur];
+    for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
     gl.useProgram(p); gl.enable(gl.BLEND); gl.depthMask(false); if (scene) gl.enable(gl.DEPTH_TEST); else gl.disable(gl.DEPTH_TEST);
-    gl.uniformMatrix4fv(U("uView"), false, view); gl.uniformMatrix4fv(U("uProj"), false, proj);
-    gl.uniform2f(U("uFocal"), f*h/2, f*h/2); gl.uniform2f(U("uViewport"), w, h);
+    gl.uniformMatrix4fv(U("uView"), false, V.view); gl.uniformMatrix4fv(U("uProj"), false, V.proj);
+    gl.uniform2f(U("uFocal"), V.f*V.h/2, V.f*V.h/2); gl.uniform2f(U("uViewport"), V.w, V.h);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quad); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.dataBuf); gl.bufferData(gl.ARRAY_BUFFER, this.sorted[this.cur].buf, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.dataBuf); gl.bufferData(gl.ARRAY_BUFFER, sorted[cur].buf, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, REC, 0); gl.vertexAttribDivisor(1, 1);
     gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, REC, 12); gl.vertexAttribDivisor(2, 1);
     gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, true, REC, 24); gl.vertexAttribDivisor(3, 1);
     gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, REC, 28); gl.vertexAttribDivisor(4, 1);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, fr.n);
-    if (this.cam && this.showCam) this.drawCams(view, proj);
+  }
+
+  draw() {
+    const V = this.drawBegin(); if (!this.frames.length || !V.view) return;
+    const scene = this.sceneN && this.showScene; if (scene) this.drawScene(V);
+    this.drawObjs(V, this.frames, this.sorted, this.cur, scene);
+    if (this.cam && this.showCam) this.drawCams(V.view, V.proj);
     this.ui.fno.textContent = (this.cur + 1) + " / " + this.frames.length; this.ui.frame.value = this.cur;
   }
 
   loop() {
     let last = performance.now(); this.acc = 0;
     const tick = now => {
-      if (this.playing && this.frames.length) {
+      const v = this.ui.inset;
+      if (this.playing && this.frames.length && v && !v.hidden && v.readyState >= 2 && !v.paused) {   // lock to the input video's clock
+        this.cur = Math.min(this.frames.length - 1, Math.floor(v.currentTime * this.fps + 1e-3));
+      } else if (this.playing && this.frames.length) {
         this.acc += (now - last) / 1000 * this.fps * this.speed;
         if (this.acc >= 1) {
           const nf = (this.cur + Math.floor(this.acc)) % this.frames.length;
@@ -315,5 +329,30 @@ class Viewer4D {
     if (ui.camchk) ui.camchk.addEventListener("change", e => { this.showCam = e.target.checked; });
   }
 }
-window.Viewer4D = Viewer4D;
+class Viewer4DCmp extends Viewer4D {
+  constructor(root, opts = {}) { super(root, opts); this.framesB = []; this.sortedB = []; this.split = 0.5; this.tokB = 0; }
+
+  async loadBaseline(objects, label) {        // swap the right-hand method without touching camera, scene or frame
+    const tok = ++this.tokB; this.ui.load.hidden = false; this.ui.load.textContent = "Loading " + (label || "baseline") + "…";
+    try {
+      const objs = (await Promise.all(objects.map(getBin))).map(parse4dgs); if (tok !== this.tokB) return;
+      const m = objs.length > 1 ? mergeObjects(objs) : objs[0]; this.framesB = m.frames; this.sortedB = m.frames.map(() => null);
+      this.ui.load.hidden = true;
+    } catch (e) { if (tok === this.tokB) this.ui.load.textContent = "Could not load " + (label || "baseline") + " (" + e.message + ")."; }
+  }
+
+  draw() {
+    const V = this.drawBegin(), gl = this.gl; if (!this.frames.length || !V.view) return;
+    const scene = this.sceneN && this.showScene, x = Math.round(V.w * this.split);
+    gl.enable(gl.SCISSOR_TEST);
+    for (const [x0, w, fr, so] of [[0, x, this.frames, this.sorted], [x, V.w - x, this.framesB, this.sortedB]]) {
+      if (w <= 0) continue; gl.scissor(x0, 0, w, V.h);
+      if (scene) this.drawScene(V); this.drawObjs(V, fr, so, this.cur, scene);
+    }
+    gl.disable(gl.SCISSOR_TEST);
+    if (this.cam && this.showCam) this.drawCams(V.view, V.proj);
+    this.ui.fno.textContent = (this.cur + 1) + " / " + this.frames.length; this.ui.frame.value = this.cur;
+  }
+}
+window.Viewer4D = Viewer4D; window.Viewer4DCmp = Viewer4DCmp;
 })();
