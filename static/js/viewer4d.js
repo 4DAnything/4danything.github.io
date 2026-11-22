@@ -52,6 +52,9 @@ void main() { gl_Position = uProj * (uView * vec4(aP, 1.0)); }`;
 const LFS = `#version 300 es
 precision highp float;
 uniform vec4 uCol; out vec4 frag; void main() { frag = uCol; }`;
+const QVS = `#version 300 es
+precision highp float;
+layout(location=0) in vec4 aP; void main() { gl_Position = aP; }`;
 const SFS = `#version 300 es
 precision highp float;
 in vec3 vC; out vec4 frag; void main() { frag = vec4(vC, 1.0); }`;
@@ -195,7 +198,7 @@ class Viewer4D {
     const mk = (vs, fs) => { const p = gl.createProgram();
       for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); gl.attachShader(p, sh); }
       gl.linkProgram(p); return p; };
-    this.prog = mk(VS, FS); this.sprog = mk(SVS, SFS); this.lprog = mk(LVS, LFS); this.lBuf = gl.createBuffer(); this.cam = null; this.showCam = true;
+    this.prog = mk(VS, FS); this.sprog = mk(SVS, SFS); this.lprog = mk(LVS, LFS); this.qprog = mk(QVS, LFS); this.lBuf = gl.createBuffer(); this.cam = null; this.showCam = true;
     this.tprog = mk(TVS, TFS); this.tBuf = gl.createBuffer(); this.tracks = null; this.showTracks = false;
     this.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-2,-2, 2,-2, -2,2, 2,2]), gl.STATIC_DRAW);
@@ -229,7 +232,7 @@ class Viewer4D {
 
   buildCams(c) {                      // per-frame input-camera frustum lines + camera path, in the export frame
     this.cam = null; if (!c || !c.c2w || !c.c2w.length) return;
-    const C0 = [c.c2w[0][3], c.c2w[0][7], c.c2w[0][11]], s = 0.16 * Math.hypot(this.target[0]-C0[0], this.target[1]-C0[1], this.target[2]-C0[2]);
+    const C0 = [c.c2w[0][3], c.c2w[0][7], c.c2w[0][11]], s = 0.08 * Math.hypot(this.target[0]-C0[0], this.target[1]-C0[1], this.target[2]-C0[2]);
     const uv = [[0, 0], [c.W, 0], [c.W, c.H], [0, c.H]], fr = [], path = new Float32Array(c.c2w.length * 3);
     c.c2w.forEach((M, f) => {
       const o = [M[3], M[7], M[11]], w = p => [0, 1, 2].map(i => M[i*4]*p[0] + M[i*4+1]*p[1] + M[i*4+2]*p[2] + o[i]);
@@ -241,17 +244,31 @@ class Viewer4D {
     this.cam = { fr, path };
   }
 
+  thickLines(pts, M, W, H, px) {      // segment list (xyz pairs) -> clip-space quads px wide
+    const out = [], cl = p => [0, 1, 2, 3].map(r => M[r]*p[0] + M[4+r]*p[1] + M[8+r]*p[2] + M[12+r]);
+    for (let i = 0; i + 5 < pts.length; i += 6) {
+      const a = cl([pts[i], pts[i+1], pts[i+2]]), b = cl([pts[i+3], pts[i+4], pts[i+5]]);
+      if (a[3] < 0.02 || b[3] < 0.02) continue;
+      let dx = (b[0]/b[3] - a[0]/a[3]) * W, dy = (b[1]/b[3] - a[1]/a[3]) * H; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+      const nx = -dy * px / W, ny = dx * px / H, q = (c, s) => [c[0] + s*nx*c[3], c[1] + s*ny*c[3], c[2], c[3]];
+      out.push(...q(a, 1), ...q(a, -1), ...q(b, 1), ...q(b, 1), ...q(a, -1), ...q(b, -1));
+    }
+    return new Float32Array(out);
+  }
+
   drawCams(view, proj) {
-    const gl = this.gl, p = this.lprog, U = n => gl.getUniformLocation(p, n), c = this.cam;
-    const fr = c.fr[Math.min(this.cur, c.fr.length - 1)];
+    const gl = this.gl, p = this.qprog, U = n => gl.getUniformLocation(p, n), c = this.cam, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+    const fr = c.fr[Math.min(this.cur, c.fr.length - 1)], M = new Float32Array(16);
+    for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) { let v = 0; for (let m = 0; m < 4; m++) v += proj[m*4+r] * view[k*4+m]; M[k*4+r] = v; }
+    const path = []; for (let i = 0; i + 5 < c.path.length; i += 3) path.push(...c.path.subarray(i, i + 6));
     gl.useProgram(p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-    gl.uniformMatrix4fv(U("uView"), false, view); gl.uniformMatrix4fv(U("uProj"), false, proj);
     for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.lBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-    gl.bufferData(gl.ARRAY_BUFFER, c.path, gl.DYNAMIC_DRAW); gl.uniform4f(U("uCol"), 0.2, 0.2, 0.2, 0.55);
-    gl.drawArrays(gl.LINE_STRIP, 0, c.path.length / 3);
-    gl.bufferData(gl.ARRAY_BUFFER, fr, gl.DYNAMIC_DRAW); gl.uniform4f(U("uCol"), 0.76, 0.25, 0.05, 1.0);
-    gl.drawArrays(gl.LINES, 0, fr.length / 3); gl.disableVertexAttribArray(0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.lBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+    for (const [seg, px, col] of [[path, 1.2, [0.2, 0.2, 0.2, 0.55]], [fr, 2.2, [0.76, 0.25, 0.05, 1.0]]]) {
+      const q = this.thickLines(seg, M, W, H, px * devicePixelRatio); if (!q.length) continue;
+      gl.bufferData(gl.ARRAY_BUFFER, q, gl.DYNAMIC_DRAW); gl.uniform4f(U("uCol"), ...col); gl.drawArrays(gl.TRIANGLES, 0, q.length / 4);
+    }
+    gl.disableVertexAttribArray(0);
   }
 
   drawTracks(V, tracks, cur, tint) {   // trailing polylines of sampled splats, fading out over the last frames
