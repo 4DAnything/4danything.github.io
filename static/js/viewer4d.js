@@ -45,6 +45,13 @@ precision highp float;
 layout(location=0) in vec3 aP; layout(location=1) in vec3 aC;
 uniform mat4 uView, uProj; uniform vec3 uMin, uExt; uniform float uPt; out vec3 vC;
 void main() { gl_Position = uProj * (uView * vec4(uMin + aP * uExt, 1.0)); gl_PointSize = uPt; vC = aC; }`;
+const LVS = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 aP; uniform mat4 uView, uProj;
+void main() { gl_Position = uProj * (uView * vec4(aP, 1.0)); }`;
+const LFS = `#version 300 es
+precision highp float;
+uniform vec4 uCol; out vec4 frag; void main() { frag = uCol; }`;
 const SFS = `#version 300 es
 precision highp float;
 in vec3 vC; out vec4 frag; void main() { frag = vec4(vC, 1.0); }`;
@@ -111,14 +118,14 @@ class Viewer4D {
     this.canvas = root.querySelector("canvas");
     this.ui = { play: root.querySelector("[data-v=play]"), frame: root.querySelector("[data-v=frame]"),
                 fno: root.querySelector("[data-v=fno]"), scene: root.querySelector("[data-v=scene]"),
-                reset: root.querySelector("[data-v=reset]"), load: root.querySelector("[data-v=load]"),
+                reset: root.querySelector("[data-v=reset]"), camchk: root.querySelector("[data-v=cam]"), load: root.querySelector("[data-v=load]"),
                 inset: root.querySelector("video[data-v=inset]") };
     const gl = this.gl = this.canvas.getContext("webgl2", { antialias: false, alpha: false });
     if (!gl) { this.ui.load.textContent = "WebGL2 is not available in this browser."; return; }
     const mk = (vs, fs) => { const p = gl.createProgram();
       for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); gl.attachShader(p, sh); }
       gl.linkProgram(p); return p; };
-    this.prog = mk(VS, FS); this.sprog = mk(SVS, SFS);
+    this.prog = mk(VS, FS); this.sprog = mk(SVS, SFS); this.lprog = mk(LVS, LFS); this.lBuf = gl.createBuffer(); this.cam = null; this.showCam = true;
     this.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-2,-2, 2,-2, -2,2, 2,2]), gl.STATIC_DRAW);
     this.dataBuf = gl.createBuffer(); this.sPos = gl.createBuffer(); this.sCol = gl.createBuffer();
@@ -140,12 +147,39 @@ class Viewer4D {
       const objs = bufs.map(parse4dgs), m = objs.length > 1 ? mergeObjects(objs) : objs[0];
       this.frames = m.frames; this.fps = m.fps; this.sorted = this.frames.map(() => null);
       this.sceneN = 0; if (sceneAb) this.loadScene(sceneAb);
-      this.fitView(def.view); this.cur = 0; this.acc = 0; this.epoch++;
+      this.fitView(def.view); this.buildCams(def.cams); this.cur = 0; this.acc = 0; this.epoch++;
       this.ui.frame.max = this.frames.length - 1;
       const v = this.ui.inset;
       if (v) { if (def.input) { v.src = def.input; v.hidden = false; v.play().catch(() => {}); } else { v.removeAttribute("src"); v.hidden = true; } }
       this.ui.load.hidden = true;
     } catch (e) { if (tok === this.token) this.ui.load.textContent = "Could not load scene (" + e.message + ")."; }
+  }
+
+  buildCams(c) {                      // per-frame input-camera frustum lines + camera path, in the export frame
+    this.cam = null; if (!c || !c.c2w || !c.c2w.length) return;
+    const C0 = [c.c2w[0][3], c.c2w[0][7], c.c2w[0][11]], s = 0.16 * Math.hypot(this.target[0]-C0[0], this.target[1]-C0[1], this.target[2]-C0[2]);
+    const uv = [[0, 0], [c.W, 0], [c.W, c.H], [0, c.H]], fr = [], path = new Float32Array(c.c2w.length * 3);
+    c.c2w.forEach((M, f) => {
+      const o = [M[3], M[7], M[11]], w = p => [0, 1, 2].map(i => M[i*4]*p[0] + M[i*4+1]*p[1] + M[i*4+2]*p[2] + o[i]);
+      const k = uv.map(([u, v]) => w([(u - c.W/2) / c.fx * s, (v - c.H/2) / c.fy * s, s])), L = [];
+      for (let i = 0; i < 4; i++) L.push(...o, ...k[i], ...k[i], ...k[(i+1) % 4]);   // 4 rays + image-plane rectangle
+      fr.push(new Float32Array(L));
+      path.set(o, f * 3);
+    });
+    this.cam = { fr, path };
+  }
+
+  drawCams(view, proj) {
+    const gl = this.gl, p = this.lprog, U = n => gl.getUniformLocation(p, n), c = this.cam;
+    const fr = c.fr[Math.min(this.cur, c.fr.length - 1)];
+    gl.useProgram(p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+    gl.uniformMatrix4fv(U("uView"), false, view); gl.uniformMatrix4fv(U("uProj"), false, proj);
+    for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.lBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.bufferData(gl.ARRAY_BUFFER, c.path, gl.DYNAMIC_DRAW); gl.uniform4f(U("uCol"), 0.2, 0.2, 0.2, 0.55);
+    gl.drawArrays(gl.LINE_STRIP, 0, c.path.length / 3);
+    gl.bufferData(gl.ARRAY_BUFFER, fr, gl.DYNAMIC_DRAW); gl.uniform4f(U("uCol"), 0.76, 0.25, 0.05, 1.0);
+    gl.drawArrays(gl.LINES, 0, fr.length / 3); gl.disableVertexAttribArray(0);
   }
 
   loadScene(ab) {
@@ -168,12 +202,12 @@ class Viewer4D {
       const L = Math.hypot(c[0], c[1], c[2]) || 1, f = c.map(v => v / L);
       let r = [f[2], 0, -f[0]]; const rl = Math.hypot(r[0], r[2]) || 1; r = r.map(v => v / rl);   // down (0,1,0) x f
       const d = [f[1]*r[2] - f[2]*r[1], f[2]*r[0] - f[0]*r[2], f[0]*r[1] - f[1]*r[0]];               // f x r
-      this.V0 = mm3(mm3(rotX((view && view.pitch) || 0.15), rotY((view && view.yaw) || -0.3)), [...r, ...d, ...f]);
+      this.V0 = mm3(mm3(rotX((view && view.pitch) || 0.38), rotY((view && view.yaw) || -0.62)), [...r, ...d, ...f]);
       let objR = 0;                   // mean per-frame half-diagonal of the objects' box
       for (const fr of this.frames) { const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
         for (let i = 0; i < fr.n; i += 5) for (let k = 0; k < 3; k++) { const v = fr.pos[i*3+k]; if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v; }
         objR += Math.hypot(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]) / 2 / this.frames.length; }
-      this.radius0 = Math.min(Math.max(L, 2.5 * objR), 6 * objR) * ((view && view.zoom) || 1.0);
+      this.radius0 = Math.min(Math.max(1.6 * L, 3 * objR), 12 * objR) * ((view && view.zoom) || 1.0);   // back far enough to see the input camera
     }
     this.radius = this.radius0; this.V3 = this.V0.slice();
   }
@@ -231,6 +265,7 @@ class Viewer4D {
     gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, true, REC, 24); gl.vertexAttribDivisor(3, 1);
     gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, REC, 28); gl.vertexAttribDivisor(4, 1);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, fr.n);
+    if (this.cam && this.showCam) this.drawCams(view, proj);
     this.ui.fno.textContent = (this.cur + 1) + " / " + this.frames.length; this.ui.frame.value = this.cur;
   }
 
@@ -277,6 +312,7 @@ class Viewer4D {
     ui.frame.addEventListener("input", e => { this.setPlaying(false); this.cur = +e.target.value; if (ui.inset && !ui.inset.hidden) ui.inset.currentTime = this.cur / this.fps; });
     ui.reset.addEventListener("click", () => { this.V3 = this.V0.slice(); this.radius = this.radius0; this.epoch++; });
     if (ui.scene) ui.scene.addEventListener("change", e => { this.showScene = e.target.checked; });
+    if (ui.camchk) ui.camchk.addEventListener("change", e => { this.showCam = e.target.checked; });
   }
 }
 window.Viewer4D = Viewer4D;
