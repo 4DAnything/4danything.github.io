@@ -92,7 +92,7 @@ section { padding-block: 56px; border-top: 1px solid var(--line) }
 
 /* method */
 .m-over { width: 100%; display: block; background: #fff; border-radius: var(--radius); border: 1px solid var(--line) }
-.m-desc { max-width: 72ch; margin: 18px auto 0; color: var(--muted); text-align: center }
+.m-desc { margin-top: 18px; text-align: left }
 
 /* comparison */
 .cmp-controls { display: grid; gap: 14px; margin-bottom: 18px }
@@ -250,7 +250,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
       <h2>Methodology</h2>
     </div>
     <img class="m-over" src="static/method/method_fig.jpg" alt="Method overview: a video-consistent 3D generator (SAM 3D with cross-frame attention and shared noise) produces per-frame latents and camera-space transforms; a 4DGS decoder turns the latents into canonical Gaussians and node deformations.">
-    <p class="m-desc">We turn SAM 3D into a video-to-4D generation model by making some of its DiT self-attention layers attend <b>across frames</b>, with <b>one shared noise</b> for all frames. A <b>4DGS decoder</b> then merges the per-frame latents into one set of canonical Gaussians <i>G</i>* and per-frame deformations, giving <b>dense correspondence</b>. Per-frame <b>camera-space transformations</b> place it in camera space. Combined with an off-the-shelf geometry model that reconstructs the camera poses and the scene, we can place the complete 4D object back into the reconstructed 3D scene. We train on real videos with <b>4D pseudo-ground truth</b> and post-train with an <b>LLM verifier</b>.</p>
+    <p class="m-desc">We turn SAM 3D into a video-to-4D generation model by making some of its DiT self-attention layers attend across frames, with one shared noise for all frames. A 4DGS decoder then merges the per-frame latents into one set of canonical Gaussians <i>G</i>* and per-frame deformations, giving dense correspondence. Per-frame camera-space transformations place it in camera space. Combined with an off-the-shelf geometry model that reconstructs the camera poses and the scene, we can place the complete 4D object back into the reconstructed 3D scene. We train on real videos with 4D pseudo-ground truth and post-train with an LLM verifier.</p>
   </div>
 </section>
 
