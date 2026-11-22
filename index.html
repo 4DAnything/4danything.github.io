@@ -308,7 +308,6 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     </div>
     <div class="cg-bar">
       <button class="chip" id="cg-play" aria-pressed="true">Playing</button>
-      <button class="chip" id="cg-spin" aria-pressed="true">Auto-rotate</button>
       <button class="chip" id="cg-reset">Input view</button>
       <span class="cg-note" id="cg-az">azimuth 0°</span>
     </div>
@@ -444,7 +443,7 @@ function drawOrbit() {
 function tick(now) {
   const lead = vids()[0];
   if (lead.readyState >= 2) for (const v of vids().slice(1)) if (v.readyState >= 2 && Math.abs(v.currentTime - lead.currentTime) > 0.06) { try { v.currentTime = lead.currentTime; } catch (e) {} }
-  if (isOrbit()) { if (cmpPlaying && now - lastUser > 2500) az += 0.05; drawOrbit(); }
+  if (isOrbit()) drawOrbit();
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -5132,7 +5131,7 @@ pickScene(SCN[0].id);
       else ctx.drawImage(v, (k % COLS) * T, (2 * m + Math.floor(k / COLS)) * T, T, T, 0, 0, T, T); }
     azLab.textContent = "azimuth " + (k * 360 / NA) + "°";
   }
-  function tick(now) { if (visible) { if (spin && playing && now - lastUser > 2500) az += 0.04; draw(); } requestAnimationFrame(tick); }
+  function tick(now) { if (visible) draw(); requestAnimationFrame(tick); }
   const start = () => { if (started) return; started = true; for (const v of Object.values(vids)) { v.src = v.dataset.src; v.preload = "auto"; } };
   const setPlay = p => { playing = p; for (const v of Object.values(vids)) p && visible ? v.play().catch(() => {}) : v.pause();
     const b = document.getElementById("cg-play"); b.textContent = p ? "Playing" : "Paused"; b.setAttribute("aria-pressed", String(p)); };
@@ -5143,7 +5142,6 @@ pickScene(SCN[0].id);
   const up = () => { x0 = null; lastUser = performance.now(); }; grid.addEventListener("pointerup", up); grid.addEventListener("pointercancel", up);
   grid.tabIndex = 0; grid.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { az += e.key === "ArrowLeft" ? -1 : 1; lastUser = performance.now(); e.preventDefault(); } });
   document.getElementById("cg-play").onclick = () => setPlay(!playing);
-  document.getElementById("cg-spin").onclick = e => { spin = !spin; e.currentTarget.setAttribute("aria-pressed", String(spin)); };
   document.getElementById("cg-reset").onclick = () => { az = 0; lastUser = performance.now(); };
   requestAnimationFrame(tick);
 })();
@@ -5230,7 +5228,6 @@ pickScene(SCN[0].id);
   setSplit(0.5);
   function draw() {
     const s = S(), m = s.meta, c = s.cv.getContext("2d"), W = s.cv.width, H = s.cv.height;
-    if (performance.now() - st.idle > 2500) st.az += 0.04;
     if (m && s.ours.readyState >= 2) {
       if (s.base.readyState >= 2 && Math.abs(s.base.currentTime - s.ours.currentTime) > 0.15) s.base.currentTime = s.ours.currentTime;
       const k = ((Math.round(st.az) % 24) + 24) % 24, T = m.tile, sx = (k % m.cols) * T, sy = Math.floor(k / m.cols) * T, x = Math.round(W * st.split);
