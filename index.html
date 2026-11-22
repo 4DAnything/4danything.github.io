@@ -192,9 +192,6 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
 <body>
 
 
-<section class="reel" aria-label="Teaser video">
-  <video src="static/teaser.mp4" autoplay muted loop playsinline preload="auto"></video>
-</section>
 
 <header class="hero wrap">
   <h1><span class="name">4DAnything</span></h1>
@@ -265,21 +262,6 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
   </div>
 </section>
 
-<section id="compare-grid">
-  <div class="wrap">
-    <div class="head">
-      <div class="kicker">Interactive · all methods</div>
-      <h2>Every method, rotating together</h2>
-      <p class="lede">Every method, one camera. Drag any object to rotate them all.</p>
-    </div>
-    <div class="cg-bar">
-      <button class="chip" id="cg-play" aria-pressed="true">Playing</button>
-      <button class="chip" id="cg-reset">Input view</button>
-      <span class="cg-note" id="cg-az">azimuth 0°</span>
-    </div>
-    <div class="cg-scroll"><div class="cg" id="cg" aria-label="Comparison grid: drag horizontally to rotate all reconstructions"></div></div>
-  </div>
-</section>
 
 <section id="compare-slides">
   <div class="wrap">
@@ -298,38 +280,6 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
   </div>
 </section>
 
-<section id="scene-compare">
-  <div class="wrap">
-    <div class="head">
-      <div class="kicker">Interactive · in the scene</div>
-      <h2>Ours vs. a baseline, in the same scene</h2>
-      <p class="lede"><b style="color:var(--ours)">Ours</b> vs. a <b style="color:var(--base)">baseline</b> in the same scene. Drag to orbit; drag ⇔ to compare; scroll to zoom.</p>
-    </div>
-    <div class="scmp-ctl">
-      <div class="row"><span class="row-label">Video</span><div class="row" id="scmp-clips"></div></div>
-      <div class="row"><span class="row-label">Baseline</span><div class="row" id="scmp-bases"></div></div>
-    </div>
-    <div class="viewer scmp" id="v4c">
-      <div class="stage4d">
-        <canvas aria-label="In-scene comparison: drag to orbit, scroll to zoom, drag the handle to compare"></canvas>
-        <video data-v="inset" class="inset" muted loop playsinline hidden></video>
-        <div class="scmp-line"></div><div class="scmp-handle" role="slider" tabindex="0" aria-label="Comparison divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">⇔</div>
-        <span class="scmp-tag l">Ours</span><span class="scmp-tag r" id="scmp-tag">Baseline</span>
-        <div class="loading" data-v="load">Loading…</div>
-      </div>
-      <div class="bar">
-        <button class="ctl" data-v="play">Pause</button>
-        <input type="range" data-v="frame" min="0" max="0" value="0" aria-label="Frame">
-        <span class="fno" data-v="fno">1 / 1</span>
-        <label class="chk"><input type="checkbox" data-v="scene" checked> background points</label>
-        <label class="chk"><input type="checkbox" data-v="cam" checked> camera</label>
-        <label class="chk"><input type="checkbox" data-v="tracks"> tracks</label>
-        <button class="ctl" data-v="reset">Reset view</button>
-      </div>
-    </div>
-    <p class="scmp-empty" id="scmp-empty" hidden>The in-scene comparison loads on the built site (its data is too large for this draft).</p>
-  </div>
-</section>
 
 <section id="bibtex">
   <div class="wrap">
@@ -6276,73 +6226,6 @@ for (const s of SCN) {
   b.addEventListener("click", () => pickScene(s.id)); thumbs.appendChild(b);
 }
 pickScene(SCN[0].id);
-</script>
-<script>
-/* ---------- comparison grid: one packed video per clip, shared azimuth ---------- */
-(() => {
-  const CLIPS = ["camel", "dog", "horsejump-high", "libby", "robot"];
-  const METH = [["ours","Ours"],["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
-                ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
-  const T = 160, COLS = 12, NA = 24, grid = document.getElementById("cg"), vids = {}, cells = [];
-  const COLSPEC = [["Input", "in", -1], ...METH.map(([id, name], i) => [name, i ? "" : "ours", i])];   // columns = input + methods, rows = clips
-  for (const [name, cls] of COLSPEC) { const l = document.createElement("div"); l.className = "lab " + cls; l.textContent = name; grid.appendChild(l); }
-  for (const c of CLIPS) for (const [, cls, tile] of COLSPEC) {
-    const cv = document.createElement("canvas"); cv.width = cv.height = T; cv.className = cls; grid.appendChild(cv); cells.push([cv.getContext("2d"), c, tile]); }
-  for (const c of CLIPS) { const v = document.createElement("video"); Object.assign(v, { muted: true, loop: true, playsInline: true, preload: "none" });
-    v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.dataset.src = "static/cmpgrid/" + c + ".mp4"; vids[c] = v; }
-  let az = 0, playing = true, spin = true, lastUser = -1e9, started = false, visible = false;
-  const azLab = document.getElementById("cg-az");
-  function draw() {
-    const k = ((Math.round(az) % NA) + NA) % NA;
-    for (const [ctx, c, m] of cells) { const v = vids[c]; if (v.readyState < 2) continue;
-      if (m < 0) ctx.drawImage(v, 0, 2 * METH.length * T, T, T, 0, 0, T, T);
-      else ctx.drawImage(v, (k % COLS) * T, (2 * m + Math.floor(k / COLS)) * T, T, T, 0, 0, T, T); }
-    azLab.textContent = "azimuth " + (k * 360 / NA) + "°";
-  }
-  function tick(now) { if (visible) draw(); requestAnimationFrame(tick); }
-  const start = () => { if (started) return; started = true; for (const v of Object.values(vids)) { v.src = v.dataset.src; v.preload = "auto"; } };
-  const setPlay = p => { playing = p; for (const v of Object.values(vids)) p && visible ? v.play().catch(() => {}) : v.pause();
-    const b = document.getElementById("cg-play"); b.textContent = p ? "Playing" : "Paused"; b.setAttribute("aria-pressed", String(p)); };
-  new IntersectionObserver(es => { visible = es[0].isIntersecting; if (visible) start(); setPlay(playing); }, { rootMargin: "200px" }).observe(grid);
-  let x0 = null, az0 = 0;
-  grid.addEventListener("pointerdown", e => { x0 = e.clientX; az0 = az; lastUser = performance.now(); grid.setPointerCapture(e.pointerId); });
-  grid.addEventListener("pointermove", e => { if (x0 === null) return; lastUser = performance.now(); az = az0 - (e.clientX - x0) / grid.getBoundingClientRect().width * NA * 1.5; });
-  const up = () => { x0 = null; lastUser = performance.now(); }; grid.addEventListener("pointerup", up); grid.addEventListener("pointercancel", up);
-  grid.tabIndex = 0; grid.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { az += e.key === "ArrowLeft" ? -1 : 1; lastUser = performance.now(); e.preventDefault(); } });
-  document.getElementById("cg-play").onclick = () => setPlay(!playing);
-  document.getElementById("cg-reset").onclick = () => { az = 0; lastUser = performance.now(); };
-  requestAnimationFrame(tick);
-})();
-</script>
-<script>
-/* ---------- in-scene comparison: Viewer4DCmp, ours | one baseline ---------- */
-(() => {
-  const DATA = window.SCMP_DATA || [], root = document.getElementById("v4c");
-  const SB = [["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
-                 ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
-  if (!DATA.length || !window.Viewer4DCmp) { root.hidden = true; document.getElementById("scmp-empty").hidden = false; return; }
-  const v = new Viewer4DCmp(root, { bg: [1, 1, 1] }), st = { clip: DATA[0].id, base: null };
-  const stage = root.querySelector(".stage4d"), line = root.querySelector(".scmp-line"), handle = root.querySelector(".scmp-handle");
-  const setSplit = x => { v.split = Math.min(0.98, Math.max(0.02, x)); line.style.left = handle.style.left = (v.split * 100) + "%";
-    handle.setAttribute("aria-valuenow", String(Math.round(v.split * 100))); };
-  setSplit(0.5);
-  handle.addEventListener("pointerdown", e => { handle.setPointerCapture(e.pointerId); e.stopPropagation(); });
-  handle.addEventListener("pointermove", e => { if (!handle.hasPointerCapture(e.pointerId)) return; const r = stage.getBoundingClientRect(); setSplit((e.clientX - r.left) / r.width); });
-  handle.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { setSplit(v.split + (e.key === "ArrowLeft" ? -0.05 : 0.05)); e.preventDefault(); } });
-  const chipRow = (el, items, onPick) => { el.innerHTML = ""; for (const [id, name] of items) { const b = document.createElement("button");
-    b.className = "chip"; b.dataset.id = id; b.textContent = name; b.addEventListener("click", () => onPick(id)); el.appendChild(b); } };
-  const press = (el, id) => el.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.id === id)));
-  const clipEl = document.getElementById("scmp-clips"), baseEl = document.getElementById("scmp-bases");
-  function pickBase(id) { const c = DATA.find(c => c.id === st.clip); if (!c.methods[id]) return; st.base = id; press(baseEl, id);
-    document.getElementById("scmp-tag").textContent = SB.find(b => b[0] === id)[1]; v.loadBaseline(c.methods[id], SB.find(b => b[0] === id)[1]); }
-  async function pickClip(id) { st.clip = id; press(clipEl, id); const c = DATA.find(c => c.id === id);
-    baseEl.querySelectorAll(".chip").forEach(b => b.disabled = !c.methods[b.dataset.id]);
-    await v.load({ label: c.label, objects: c.methods.ours, scene: c.scene, input: c.input, cams: c.cams });
-    pickBase(c.methods[st.base] ? st.base : SB.find(b => c.methods[b[0]])[0]); }
-  chipRow(clipEl, DATA.map(c => [c.id, c.label]), pickClip); chipRow(baseEl, SB, pickBase);
-  let started = false;
-  new IntersectionObserver(es => { if (es[0].isIntersecting && !started) { started = true; pickClip(DATA[0].id); } }, { rootMargin: "300px" }).observe(root);
-})();
 </script>
 <script>
 /* ---------- sliding comparison: per-clip ours | baseline turntable sprites ---------- */
