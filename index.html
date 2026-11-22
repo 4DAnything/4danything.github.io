@@ -168,21 +168,25 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
 .scmp-tag.l { left: 12px; background: var(--ours) } .scmp-tag.r { right: 12px; background: var(--base) }
 .scmp-empty { padding: 28px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius) }
 /* sliding comparison: one large clip per slide, ours | baseline split, rotatable */
-.cs-car { position: relative; max-width: 980px; margin: 16px auto 0 }
-.cs-view { overflow: hidden; border-radius: var(--radius) }
-.cs-track { display: flex; transition: transform .45s ease }
-.cs-slide { flex: 0 0 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; align-items: center; padding: 4px 56px }
+.cs-car { position: relative; max-width: 1180px; margin: 16px auto 0; height: clamp(300px, 44vw, 560px); overflow: hidden; touch-action: pan-y }
+.cs-track { position: absolute; inset: 0 }
+.cs-slide { position: absolute; top: 0; left: 50%; width: min(820px, 72%); margin-left: calc(min(820px, 72%) / -2); display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; align-items: center; padding: 14px; box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(17,17,17,.08);
+  transition: transform .5s cubic-bezier(.2,.7,.2,1), opacity .5s, filter .5s }
+.cs-slide.side { cursor: pointer; filter: saturate(.6) } .cs-slide.side * { pointer-events: none }
+.cs-slide.off { opacity: 0; pointer-events: none }
 .cs-slide video.inp { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--stage) }
 .cs-cell { position: relative; width: 100%; aspect-ratio: 1; max-width: 100% }
 .cs-cell canvas { width: 100%; height: 100%; display: block; background: #fff; border: 1px solid var(--line); border-radius: 8px; cursor: grab; touch-action: none }
 .cs-cell .scmp-tag { top: 8px }
 .cs-cap { grid-column: 1 / -1; text-align: center; font: 600 0.85rem Inter, sans-serif; color: var(--muted) }
-.cs-arrow { position: absolute; top: 45%; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 700 1.1rem Inter, sans-serif; cursor: pointer; z-index: 2 }
-.cs-arrow.prev { left: 4px } .cs-arrow.next { right: 4px }
+.cs-arrow { position: absolute; top: 50%; margin-top: -22px; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 700 1.2rem Inter, sans-serif; cursor: pointer; z-index: 20; box-shadow: 0 2px 8px rgba(17,17,17,.12) }
+.cs-arrow.prev { left: 8px } .cs-arrow.next { right: 8px }
 .cs-dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px }
 .cs-dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: var(--line); cursor: pointer }
 .cs-dots button[aria-current=true] { background: var(--ours) }
-@media (max-width: 640px) { .cs-slide { grid-template-columns: 1fr; padding: 4px 8px } .cs-slide video.inp { width: 40%; justify-self: center } .cs-arrow { top: auto; bottom: -46px } }
+@media (max-width: 640px) { .cs-car { height: 132vw } .cs-slide { width: 82%; margin-left: -41%; grid-template-columns: 1fr } .cs-slide video.inp { width: 40%; justify-self: center } }
 </style>
 </head>
 <body>
@@ -221,7 +225,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <div class="head">
       <div class="kicker">Interactive · place in scene</div>
       <h2>4D objects placed back in their scene</h2>
-      <p class="lede">Each object is predicted in the input camera's space, so its Gaussians drop straight into the reconstructed scene with no per-video fitting. Pick a video below, then drag to orbit the 4D objects inside the reconstructed scene.</p>
+      <p class="lede">Pick a scene below to explore its 4D reconstruction. Drag to orbit; scroll to zoom.</p>
     </div>
     <div class="viewer" id="v4d">
       <div class="stage4d">
@@ -235,13 +239,14 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
         <button class="ctl" data-v="play">Pause</button>
         <input type="range" data-v="frame" min="0" max="0" value="0" aria-label="Frame">
         <span class="fno" data-v="fno">1 / 1</span>
-        <label class="chk"><input type="checkbox" data-v="scene" checked> scene points</label>
-        <label class="chk"><input type="checkbox" data-v="cam" checked> input camera</label>
+        <label class="chk"><input type="checkbox" data-v="scene" checked> background points</label>
+        <label class="chk"><input type="checkbox" data-v="cam" checked> camera</label>
+        <label class="chk"><input type="checkbox" data-v="tracks"> tracks</label>
         <button class="ctl" data-v="reset">Reset view</button>
       </div>
     </div>
     <div class="thumbs" id="scene-thumbs"></div>
-    <p class="cap">Smoothed reconstructions in the input video's scene point cloud (inset: input video). Rendered live in the browser (WebGL2).</p>
+    
   </div>
 </section>
 
@@ -265,7 +270,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <div class="head">
       <div class="kicker">Interactive · comparison</div>
       <h2>Ours vs. baselines</h2>
-      <p class="lede">Drag anywhere to <b>rotate</b> both reconstructions together; drag the ⇔ divider to wipe between them: <b style="color:var(--ours)">ours</b> on the left, the selected <b style="color:var(--base)">baseline</b> on the right. All videos play frame-synced. Fixed input-view and novel-view renders are also available.</p>
+      <p class="lede"><b style="color:var(--ours)">Ours</b> vs. a <b style="color:var(--base)">baseline</b>. Drag to rotate; drag ⇔ to compare.</p>
     </div>
     <div class="cmp-controls">
       <div class="row"><span class="row-label">Video</span><div class="row" id="clip-row"></div></div>
@@ -293,7 +298,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
       </div>
     </div>
     <div class="cmp-foot">
-      <span id="cmp-note">Renders on white background, 12 fps.</span>
+      <span id="cmp-note"></span>
       <button class="ctl" id="cmp-play">Pause</button>
     </div>
   </div>
@@ -304,7 +309,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <div class="head">
       <div class="kicker">Interactive · all methods</div>
       <h2>Every method, rotating together</h2>
-      <p class="lede">Rows are input videos, columns are methods. <b>Drag any object</b> to turn every reconstruction in the grid at once: all renders share the same camera ring around the object, starting from the input view. White background, 12 fps.</p>
+      <p class="lede">Every method, one camera. Drag any object to rotate them all.</p>
     </div>
     <div class="cg-bar">
       <button class="chip" id="cg-play" aria-pressed="true">Playing</button>
@@ -320,12 +325,12 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <div class="head">
       <div class="kicker">Interactive · one video at a time</div>
       <h2>Ours vs. each baseline, side by side</h2>
-      <p class="lede">One video per slide. <b style="color:var(--ours)">Ours</b> is left of the divider, the selected <b style="color:var(--base)">baseline</b> right, both at the same viewpoint. Drag the object to rotate both, drag the ⇔ handle to wipe, use the arrows to change video.</p>
+      <p class="lede"><b style="color:var(--ours)">Ours</b> vs. a <b style="color:var(--base)">baseline</b>. Drag to rotate; drag ⇔ to compare.</p>
     </div>
     <div class="row"><span class="row-label">Baseline</span><div class="row" id="cs-bases"></div></div>
     <div class="cs-car">
       <button class="cs-arrow prev" aria-label="Previous video">‹</button>
-      <div class="cs-view"><div class="cs-track" id="cs-track"></div></div>
+      <div class="cs-track" id="cs-track"></div>
       <button class="cs-arrow next" aria-label="Next video">›</button>
     </div>
     <div class="cs-dots" id="cs-dots"></div>
@@ -337,7 +342,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <div class="head">
       <div class="kicker">Interactive · in the scene</div>
       <h2>Ours vs. a baseline, in the same scene</h2>
-      <p class="lede">Each method's reconstruction placed in the reconstructed scene, in its own appearance. <b style="color:var(--ours)">Ours</b> is left of the divider, the selected <b style="color:var(--base)">baseline</b> right; both share the scene points and the camera. Drag the ⇔ handle to wipe, drag elsewhere to orbit, scroll to zoom.</p>
+      <p class="lede"><b style="color:var(--ours)">Ours</b> vs. a <b style="color:var(--base)">baseline</b> in the same scene. Drag to orbit; drag ⇔ to compare; scroll to zoom.</p>
     </div>
     <div class="scmp-ctl">
       <div class="row"><span class="row-label">Video</span><div class="row" id="scmp-clips"></div></div>
@@ -355,8 +360,9 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
         <button class="ctl" data-v="play">Pause</button>
         <input type="range" data-v="frame" min="0" max="0" value="0" aria-label="Frame">
         <span class="fno" data-v="fno">1 / 1</span>
-        <label class="chk"><input type="checkbox" data-v="scene" checked> scene points</label>
-        <label class="chk"><input type="checkbox" data-v="cam" checked> input camera</label>
+        <label class="chk"><input type="checkbox" data-v="scene" checked> background points</label>
+        <label class="chk"><input type="checkbox" data-v="cam" checked> camera</label>
+        <label class="chk"><input type="checkbox" data-v="tracks"> tracks</label>
         <button class="ctl" data-v="reset">Reset view</button>
       </div>
     </div>
@@ -378,7 +384,6 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
 
 <footer>Page layout adapted from Nerfies. Anonymous submission.</footer>
 
-<script>window.V4D_PACKED = true;</script>
 <script src="static/js/viewer4d.js"></script>
 <script>
 "use strict";
@@ -486,8 +491,8 @@ const SCN = [
   "id": "rhinos",
   "label": "Rhinos",
   "objects": [
-   "static/viz/rhinos/m_rhinos__o0.4dgs",
-   "static/viz/rhinos/m_rhinos__o1.4dgs"
+   "static/viz/rhinos/m_rhinos__o0.4dgz",
+   "static/viz/rhinos/m_rhinos__o1.4dgz"
   ],
   "scene": "static/viz/rhinos/rhinos_scene.bin",
   "input": "static/viz/rhinos/rhinos_input.mp4",
@@ -1177,8 +1182,8 @@ const SCN = [
   "id": "city_dogwalk",
   "label": "City dog walk",
   "objects": [
-   "static/viz/city_dogwalk/m_city_dogwalk__o0.4dgs",
-   "static/viz/city_dogwalk/m_city_dogwalk__o1.4dgs"
+   "static/viz/city_dogwalk/m_city_dogwalk__o0.4dgz",
+   "static/viz/city_dogwalk/m_city_dogwalk__o1.4dgz"
   ],
   "scene": "static/viz/city_dogwalk/city_dogwalk_scene.bin",
   "input": "static/viz/city_dogwalk/city_dogwalk_input.mp4",
@@ -1868,7 +1873,7 @@ const SCN = [
   "id": "clicbot_spinning",
   "label": "Spinning robot",
   "objects": [
-   "static/viz/clicbot_spinning/clicbot_spinning__o0.4dgs"
+   "static/viz/clicbot_spinning/clicbot_spinning__o0.4dgz"
   ],
   "scene": "static/viz/clicbot_spinning/clicbot_spinning_scene.bin",
   "input": "static/viz/clicbot_spinning/clicbot_spinning_input.mp4",
@@ -2558,8 +2563,8 @@ const SCN = [
   "id": "dogs_urban_trot",
   "label": "Dogs trotting",
   "objects": [
-   "static/viz/dogs_urban_trot/dogs_urban_trot__o0.4dgs",
-   "static/viz/dogs_urban_trot/dogs_urban_trot__o1.4dgs"
+   "static/viz/dogs_urban_trot/dogs_urban_trot__o0.4dgz",
+   "static/viz/dogs_urban_trot/dogs_urban_trot__o1.4dgz"
   ],
   "scene": "static/viz/dogs_urban_trot/dogs_urban_trot_scene.bin",
   "input": "static/viz/dogs_urban_trot/dogs_urban_trot_input.mp4",
@@ -3011,7 +3016,7 @@ const SCN = [
   "id": "horse_white_run",
   "label": "White horse",
   "objects": [
-   "static/viz/horse_white_run/horse_white_run__o0.4dgs"
+   "static/viz/horse_white_run/horse_white_run__o0.4dgz"
   ],
   "scene": "static/viz/horse_white_run/horse_white_run_scene.bin",
   "input": "static/viz/horse_white_run/horse_white_run_input.mp4",
@@ -3701,7 +3706,7 @@ const SCN = [
   "id": "motorcycle_wheelie",
   "label": "Wheelie",
   "objects": [
-   "static/viz/motorcycle_wheelie/motorcycle_wheelie__o0.4dgs"
+   "static/viz/motorcycle_wheelie/motorcycle_wheelie__o0.4dgz"
   ],
   "scene": "static/viz/motorcycle_wheelie/motorcycle_wheelie_scene.bin",
   "input": "static/viz/motorcycle_wheelie/motorcycle_wheelie_input.mp4",
@@ -4391,7 +4396,7 @@ const SCN = [
   "id": "octo_b",
   "label": "Octopus",
   "objects": [
-   "static/viz/octo_b/octo_b__o0.4dgs"
+   "static/viz/octo_b/octo_b__o0.4dgz"
   ],
   "scene": "static/viz/octo_b/octo_b_scene.bin",
   "input": "static/viz/octo_b/octo_b_input.mp4",
@@ -4745,7 +4750,7 @@ const SCN = [
   "id": "ray_e",
   "label": "Stingray",
   "objects": [
-   "static/viz/ray_e/ray_e__o0.4dgs"
+   "static/viz/ray_e/ray_e__o0.4dgz"
   ],
   "scene": "static/viz/ray_e/ray_e_scene.bin",
   "input": "static/viz/ray_e/ray_e_input.mp4",
@@ -5094,6 +5099,1390 @@ const SCN = [
     ]
    ]
   }
+ },
+ {
+  "id": "man_three_dogs_beach",
+  "label": "Man & dogs on the beach",
+  "objects": [
+   "static/viz/man_three_dogs_beach/man_three_dogs_beach__o0.4dgz",
+   "static/viz/man_three_dogs_beach/man_three_dogs_beach__o1.4dgz",
+   "static/viz/man_three_dogs_beach/man_three_dogs_beach__o2.4dgz"
+  ],
+  "scene": "static/viz/man_three_dogs_beach/man_three_dogs_beach_scene.bin",
+  "input": "static/viz/man_three_dogs_beach/man_three_dogs_beach_input.mp4",
+  "thumb": "static/viz/man_three_dogs_beach/man_three_dogs_beach.jpg",
+  "cams": {
+   "fx": 367.1636962890625,
+   "fy": 366.1976318359375,
+   "W": 518.0,
+   "H": 294.0,
+   "c2w": [
+    [
+     1.0,
+     -0.0,
+     -0.0,
+     -0.0,
+     -0.0,
+     1.0,
+     0.0,
+     0.0,
+     -0.0,
+     -0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.99991,
+     0.004788,
+     -0.012511,
+     -0.015678,
+     -0.004814,
+     0.999986,
+     -0.002102,
+     -0.000507,
+     0.0125,
+     0.002162,
+     0.99992,
+     0.002906
+    ],
+    [
+     0.999676,
+     0.008015,
+     -0.024168,
+     -0.023847,
+     -0.008087,
+     0.999963,
+     -0.002886,
+     -6.9e-05,
+     0.024143,
+     0.003081,
+     0.999704,
+     -0.001197
+    ],
+    [
+     0.999133,
+     0.01252,
+     -0.039709,
+     -0.045124,
+     -0.012731,
+     0.999906,
+     -0.005068,
+     -0.000261,
+     0.039642,
+     0.005569,
+     0.999198,
+     -0.004345
+    ],
+    [
+     0.998397,
+     0.016687,
+     -0.054086,
+     -0.069919,
+     -0.017184,
+     0.999814,
+     -0.008729,
+     0.002895,
+     0.05393,
+     0.009645,
+     0.998498,
+     -0.008116
+    ],
+    [
+     0.997517,
+     0.020355,
+     -0.067416,
+     -0.102555,
+     -0.021299,
+     0.999684,
+     -0.013318,
+     0.007466,
+     0.067124,
+     0.014721,
+     0.997636,
+     -0.016333
+    ],
+    [
+     0.996868,
+     0.023384,
+     -0.075546,
+     -0.13284,
+     -0.024656,
+     0.999569,
+     -0.01596,
+     0.009765,
+     0.07514,
+     0.017773,
+     0.997015,
+     -0.023561
+    ],
+    [
+     0.995827,
+     0.026387,
+     -0.087359,
+     -0.172561,
+     -0.028145,
+     0.999424,
+     -0.01896,
+     0.00958,
+     0.086809,
+     0.02134,
+     0.995996,
+     -0.040937
+    ],
+    [
+     0.994903,
+     0.028547,
+     -0.096714,
+     -0.213921,
+     -0.030729,
+     0.999304,
+     -0.021142,
+     0.012063,
+     0.096043,
+     0.024006,
+     0.995088,
+     -0.059805
+    ],
+    [
+     0.993997,
+     0.031086,
+     -0.104896,
+     -0.257595,
+     -0.033759,
+     0.999146,
+     -0.023812,
+     0.014729,
+     0.104066,
+     0.02721,
+     0.994198,
+     -0.074227
+    ],
+    [
+     0.993068,
+     0.032431,
+     -0.112975,
+     -0.286154,
+     -0.035452,
+     0.999063,
+     -0.024837,
+     0.012997,
+     0.112064,
+     0.02867,
+     0.993287,
+     -0.087434
+    ],
+    [
+     0.992417,
+     0.033451,
+     -0.118278,
+     -0.334993,
+     -0.036861,
+     0.998962,
+     -0.02676,
+     0.018198,
+     0.11726,
+     0.030917,
+     0.99262,
+     -0.091891
+    ],
+    [
+     0.99137,
+     0.033786,
+     -0.126666,
+     -0.377468,
+     -0.037438,
+     0.998946,
+     -0.02656,
+     0.024095,
+     0.125635,
+     0.031073,
+     0.99159,
+     -0.093203
+    ],
+    [
+     0.991137,
+     0.034184,
+     -0.12837,
+     -0.426594,
+     -0.037908,
+     0.998925,
+     -0.026683,
+     0.022764,
+     0.12732,
+     0.031313,
+     0.991367,
+     -0.113919
+    ],
+    [
+     0.989768,
+     0.036648,
+     -0.1379,
+     -0.490858,
+     -0.040408,
+     0.998881,
+     -0.024564,
+     0.020599,
+     0.136845,
+     0.029885,
+     0.990142,
+     -0.156863
+    ],
+    [
+     0.988682,
+     0.03789,
+     -0.145161,
+     -0.539978,
+     -0.042078,
+     0.998779,
+     -0.025882,
+     0.023857,
+     0.144003,
+     0.031697,
+     0.989069,
+     -0.181396
+    ],
+    [
+     0.988098,
+     0.034632,
+     -0.149874,
+     -0.602756,
+     -0.039224,
+     0.998844,
+     -0.02779,
+     0.033117,
+     0.148739,
+     0.033338,
+     0.988314,
+     -0.219982
+    ],
+    [
+     0.984773,
+     0.033965,
+     -0.170493,
+     -0.578119,
+     -0.039268,
+     0.998841,
+     -0.027824,
+     0.035454,
+     0.16935,
+     0.034095,
+     0.984966,
+     -0.226508
+    ],
+    [
+     0.98011,
+     0.032654,
+     -0.195751,
+     -0.571234,
+     -0.038364,
+     0.99894,
+     -0.02545,
+     0.024289,
+     0.194713,
+     0.032454,
+     0.980323,
+     -0.21086
+    ],
+    [
+     0.977112,
+     0.032137,
+     -0.210285,
+     -0.564685,
+     -0.038238,
+     0.998956,
+     -0.025012,
+     0.024646,
+     0.209262,
+     0.032481,
+     0.97732,
+     -0.222836
+    ],
+    [
+     0.973093,
+     0.034134,
+     -0.227871,
+     -0.526355,
+     -0.040344,
+     0.998929,
+     -0.022647,
+     0.022843,
+     0.226853,
+     0.031231,
+     0.973428,
+     -0.21635
+    ],
+    [
+     0.965666,
+     0.036005,
+     -0.257279,
+     -0.450523,
+     -0.043249,
+     0.99881,
+     -0.022551,
+     0.030835,
+     0.256161,
+     0.032904,
+     0.966074,
+     -0.218301
+    ],
+    [
+     0.963938,
+     0.037793,
+     -0.263428,
+     -0.505041,
+     -0.045091,
+     0.998747,
+     -0.021709,
+     0.041912,
+     0.262278,
+     0.032804,
+     0.964435,
+     -0.25314
+    ],
+    [
+     0.959155,
+     0.038632,
+     -0.280231,
+     -0.481944,
+     -0.045701,
+     0.998779,
+     -0.018735,
+     0.034872,
+     0.279165,
+     0.030777,
+     0.95975,
+     -0.211635
+    ],
+    [
+     0.954647,
+     0.039861,
+     -0.295061,
+     -0.50195,
+     -0.047579,
+     0.998686,
+     -0.019021,
+     0.03787,
+     0.293915,
+     0.032197,
+     0.955289,
+     -0.209572
+    ],
+    [
+     0.950995,
+     0.043273,
+     -0.306163,
+     -0.468888,
+     -0.050501,
+     0.9986,
+     -0.015723,
+     0.03265,
+     0.305054,
+     0.030414,
+     0.951849,
+     -0.215436
+    ],
+    [
+     0.94578,
+     0.047341,
+     -0.321339,
+     -0.467956,
+     -0.055551,
+     0.998321,
+     -0.016421,
+     0.041213,
+     0.320022,
+     0.033381,
+     0.946822,
+     -0.238277
+    ],
+    [
+     0.942905,
+     0.04442,
+     -0.330086,
+     -0.45144,
+     -0.052469,
+     0.998502,
+     -0.015511,
+     0.032662,
+     0.328903,
+     0.031944,
+     0.943824,
+     -0.185831
+    ],
+    [
+     0.933312,
+     0.048816,
+     -0.355733,
+     -0.361636,
+     -0.057389,
+     0.998259,
+     -0.01358,
+     0.028742,
+     0.354451,
+     0.03309,
+     0.934489,
+     -0.173529
+    ],
+    [
+     0.930108,
+     0.049461,
+     -0.36394,
+     -0.39122,
+     -0.058655,
+     0.998177,
+     -0.014247,
+     0.031566,
+     0.362571,
+     0.034599,
+     0.931314,
+     -0.215333
+    ],
+    [
+     0.926421,
+     0.050921,
+     -0.373031,
+     -0.406941,
+     -0.06063,
+     0.998057,
+     -0.014334,
+     0.037268,
+     0.371576,
+     0.035896,
+     0.927708,
+     -0.22863
+    ],
+    [
+     0.920761,
+     0.052561,
+     -0.386571,
+     -0.310792,
+     -0.062913,
+     0.997918,
+     -0.014166,
+     0.035772,
+     0.385022,
+     0.037364,
+     0.922151,
+     -0.241193
+    ],
+    [
+     0.914347,
+     0.050899,
+     -0.40172,
+     -0.292028,
+     -0.061675,
+     0.997999,
+     -0.013929,
+     0.030372,
+     0.400207,
+     0.037512,
+     0.915657,
+     -0.208143
+    ],
+    [
+     0.916892,
+     0.049933,
+     -0.396,
+     -0.347864,
+     -0.061154,
+     0.998004,
+     -0.015753,
+     0.029644,
+     0.394423,
+     0.038661,
+     0.918115,
+     -0.20203
+    ],
+    [
+     0.909531,
+     0.052889,
+     -0.412257,
+     -0.381048,
+     -0.063778,
+     0.997883,
+     -0.012689,
+     0.025859,
+     0.410713,
+     0.037834,
+     0.910979,
+     -0.205112
+    ],
+    [
+     0.911061,
+     0.053227,
+     -0.408821,
+     -0.391396,
+     -0.064219,
+     0.997849,
+     -0.013195,
+     0.029014,
+     0.407239,
+     0.038276,
+     0.912519,
+     -0.211518
+    ],
+    [
+     0.903876,
+     0.056478,
+     -0.424049,
+     -0.320634,
+     -0.066571,
+     0.997741,
+     -0.009013,
+     0.024166,
+     0.422582,
+     0.036376,
+     0.905594,
+     -0.224268
+    ],
+    [
+     0.905555,
+     0.056576,
+     -0.42044,
+     -0.269751,
+     -0.068702,
+     0.997543,
+     -0.013739,
+     0.020365,
+     0.418629,
+     0.041327,
+     0.907216,
+     -0.183398
+    ],
+    [
+     0.906845,
+     0.05854,
+     -0.417378,
+     -0.259338,
+     -0.069742,
+     0.997497,
+     -0.011625,
+     0.021297,
+     0.415653,
+     0.039651,
+     0.908659,
+     -0.199294
+    ],
+    [
+     0.896503,
+     0.062292,
+     -0.438636,
+     -0.255583,
+     -0.074403,
+     0.997173,
+     -0.010456,
+     0.01948,
+     0.436745,
+     0.04201,
+     0.898604,
+     -0.155986
+    ],
+    [
+     0.889397,
+     0.064283,
+     -0.452593,
+     -0.212554,
+     -0.07593,
+     0.997084,
+     -0.007593,
+     0.025482,
+     0.450785,
+     0.041119,
+     0.891685,
+     -0.185019
+    ],
+    [
+     0.886913,
+     0.065036,
+     -0.457335,
+     -0.181941,
+     -0.075505,
+     0.997135,
+     -0.004628,
+     0.018378,
+     0.455723,
+     0.038635,
+     0.889283,
+     -0.175723
+    ],
+    [
+     0.880894,
+     0.065166,
+     -0.468806,
+     -0.231864,
+     -0.074461,
+     0.997223,
+     -0.001295,
+     0.007548,
+     0.46742,
+     0.036049,
+     0.8833,
+     -0.148068
+    ],
+    [
+     0.872269,
+     0.067497,
+     -0.484346,
+     -0.169326,
+     -0.077009,
+     0.99703,
+     0.000257,
+     0.015043,
+     0.482925,
+     0.037075,
+     0.874877,
+     -0.124493
+    ],
+    [
+     0.868031,
+     0.066548,
+     -0.49203,
+     -0.133606,
+     -0.074961,
+     0.997183,
+     0.002627,
+     0.018999,
+     0.490819,
+     0.034603,
+     0.870574,
+     -0.149055
+    ],
+    [
+     0.871689,
+     0.068212,
+     -0.48529,
+     -0.195691,
+     -0.075207,
+     0.997155,
+     0.005071,
+     0.016879,
+     0.484255,
+     0.032076,
+     0.874339,
+     -0.175788
+    ],
+    [
+     0.869453,
+     0.072515,
+     -0.488664,
+     -0.174449,
+     -0.078886,
+     0.996855,
+     0.00757,
+     0.014601,
+     0.487676,
+     0.031967,
+     0.872439,
+     -0.177849
+    ],
+    [
+     0.866059,
+     0.073634,
+     -0.494489,
+     -0.214918,
+     -0.079085,
+     0.996818,
+     0.009924,
+     0.012521,
+     0.493646,
+     0.030512,
+     0.869127,
+     -0.18595
+    ]
+   ]
+  }
+ },
+ {
+  "id": "boy_two_camels",
+  "label": "Boy & two camels",
+  "objects": [
+   "static/viz/boy_two_camels/boy_two_camels__o0.4dgz",
+   "static/viz/boy_two_camels/boy_two_camels__o1.4dgz",
+   "static/viz/boy_two_camels/boy_two_camels__o2.4dgz"
+  ],
+  "scene": "static/viz/boy_two_camels/boy_two_camels_scene.bin",
+  "input": "static/viz/boy_two_camels/boy_two_camels_input.mp4",
+  "thumb": "static/viz/boy_two_camels/boy_two_camels.jpg",
+  "cams": {
+   "fx": 401.087158203125,
+   "fy": 400.9560852050781,
+   "W": 518.0,
+   "H": 294.0,
+   "c2w": [
+    [
+     1.0,
+     -0.0,
+     -0.0,
+     0.0,
+     -0.0,
+     1.0,
+     -0.0,
+     0.0,
+     -0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.999999,
+     -2.6e-05,
+     -0.001179,
+     0.003415,
+     2.6e-05,
+     1.0,
+     -0.000131,
+     0.000893,
+     0.001179,
+     0.000131,
+     0.999999,
+     0.002789
+    ],
+    [
+     0.999997,
+     -0.001353,
+     -0.001815,
+     0.00234,
+     0.001349,
+     0.999997,
+     -0.001982,
+     0.000341,
+     0.001818,
+     0.00198,
+     0.999996,
+     0.001398
+    ],
+    [
+     0.999996,
+     -0.002268,
+     -0.001595,
+     5.3e-05,
+     0.002262,
+     0.999991,
+     -0.003617,
+     -0.000439,
+     0.001604,
+     0.003613,
+     0.999992,
+     -0.000662
+    ],
+    [
+     0.999994,
+     -0.003471,
+     -0.000865,
+     -0.003433,
+     0.003467,
+     0.999982,
+     -0.004828,
+     -0.001427,
+     0.000881,
+     0.004825,
+     0.999988,
+     -0.002843
+    ],
+    [
+     0.999987,
+     -0.005104,
+     7.9e-05,
+     -0.00798,
+     0.005104,
+     0.999972,
+     -0.005561,
+     -0.002503,
+     -5.1e-05,
+     0.005562,
+     0.999984,
+     -0.007192
+    ],
+    [
+     0.999976,
+     -0.00676,
+     0.001431,
+     -0.013783,
+     0.006769,
+     0.999955,
+     -0.006677,
+     -0.004185,
+     -0.001386,
+     0.006687,
+     0.999977,
+     -0.012141
+    ],
+    [
+     0.99996,
+     -0.008564,
+     0.002721,
+     -0.016275,
+     0.008583,
+     0.999939,
+     -0.006892,
+     -0.004777,
+     -0.002662,
+     0.006915,
+     0.999973,
+     -0.013252
+    ],
+    [
+     0.999931,
+     -0.010665,
+     0.004835,
+     -0.019502,
+     0.0107,
+     0.999917,
+     -0.007199,
+     -0.005106,
+     -0.004758,
+     0.00725,
+     0.999962,
+     -0.015255
+    ],
+    [
+     0.99991,
+     -0.01206,
+     0.005881,
+     -0.021176,
+     0.012101,
+     0.999902,
+     -0.007043,
+     -0.005398,
+     -0.005796,
+     0.007113,
+     0.999958,
+     -0.022562
+    ],
+    [
+     0.999875,
+     -0.01364,
+     0.008042,
+     -0.021862,
+     0.013699,
+     0.999879,
+     -0.007369,
+     -0.004153,
+     -0.007941,
+     0.007478,
+     0.99994,
+     -0.019747
+    ],
+    [
+     0.999823,
+     -0.015368,
+     0.010887,
+     -0.022276,
+     0.015448,
+     0.999854,
+     -0.007249,
+     -0.003675,
+     -0.010774,
+     0.007415,
+     0.999914,
+     -0.020091
+    ],
+    [
+     0.999771,
+     -0.01704,
+     0.012978,
+     -0.022302,
+     0.01713,
+     0.99983,
+     -0.006847,
+     -0.00325,
+     -0.01286,
+     0.007067,
+     0.999892,
+     -0.020165
+    ],
+    [
+     0.999705,
+     -0.018489,
+     0.015747,
+     -0.023712,
+     0.018591,
+     0.999807,
+     -0.006341,
+     -0.003886,
+     -0.015627,
+     0.006632,
+     0.999856,
+     -0.025078
+    ],
+    [
+     0.99962,
+     -0.019867,
+     0.019123,
+     -0.025898,
+     0.019983,
+     0.999783,
+     -0.005867,
+     -0.004112,
+     -0.019002,
+     0.006247,
+     0.9998,
+     -0.027484
+    ],
+    [
+     0.999531,
+     -0.02082,
+     0.022471,
+     -0.02842,
+     0.020943,
+     0.999767,
+     -0.005228,
+     -0.004512,
+     -0.022357,
+     0.005696,
+     0.999734,
+     -0.029567
+    ],
+    [
+     0.999441,
+     -0.02168,
+     0.025449,
+     -0.031168,
+     0.0218,
+     0.999752,
+     -0.004459,
+     -0.005758,
+     -0.025346,
+     0.005012,
+     0.999666,
+     -0.033026
+    ],
+    [
+     0.999318,
+     -0.022895,
+     0.028969,
+     -0.034645,
+     0.023022,
+     0.999727,
+     -0.004048,
+     -0.005847,
+     -0.028869,
+     0.004712,
+     0.999572,
+     -0.037318
+    ],
+    [
+     0.999199,
+     -0.023489,
+     0.0324,
+     -0.036758,
+     0.023595,
+     0.999717,
+     -0.002908,
+     -0.006547,
+     -0.032322,
+     0.003671,
+     0.999471,
+     -0.037553
+    ],
+    [
+     0.999079,
+     -0.023716,
+     0.035758,
+     -0.039963,
+     0.023808,
+     0.999714,
+     -0.002144,
+     -0.006899,
+     -0.035697,
+     0.002993,
+     0.999358,
+     -0.040087
+    ],
+    [
+     0.998836,
+     -0.024846,
+     0.041333,
+     -0.042754,
+     0.024924,
+     0.999688,
+     -0.001367,
+     -0.005981,
+     -0.041286,
+     0.002395,
+     0.999145,
+     -0.040574
+    ],
+    [
+     0.998694,
+     -0.025077,
+     0.044511,
+     -0.042516,
+     0.025118,
+     0.999684,
+     -0.000365,
+     -0.006082,
+     -0.044488,
+     0.001483,
+     0.999009,
+     -0.039839
+    ],
+    [
+     0.998492,
+     -0.02541,
+     0.048669,
+     -0.041958,
+     0.025405,
+     0.999677,
+     0.00072,
+     -0.006168,
+     -0.048671,
+     0.000517,
+     0.998815,
+     -0.042556
+    ],
+    [
+     0.998303,
+     -0.025685,
+     0.052268,
+     -0.042105,
+     0.025647,
+     0.99967,
+     0.001395,
+     -0.005732,
+     -0.052286,
+     -5.2e-05,
+     0.998632,
+     -0.043255
+    ],
+    [
+     0.998014,
+     -0.026561,
+     0.057122,
+     -0.04055,
+     0.026432,
+     0.999646,
+     0.003005,
+     -0.005731,
+     -0.057181,
+     -0.001489,
+     0.998363,
+     -0.044197
+    ],
+    [
+     0.997602,
+     -0.02734,
+     0.063581,
+     -0.04337,
+     0.027109,
+     0.999622,
+     0.004481,
+     -0.006469,
+     -0.06368,
+     -0.002747,
+     0.997967,
+     -0.047422
+    ],
+    [
+     0.997045,
+     -0.027957,
+     0.071554,
+     -0.045293,
+     0.027671,
+     0.999605,
+     0.004985,
+     -0.004963,
+     -0.071665,
+     -0.002991,
+     0.997424,
+     -0.04681
+    ],
+    [
+     0.996569,
+     -0.02886,
+     0.077575,
+     -0.044315,
+     0.028498,
+     0.999577,
+     0.005773,
+     -0.004326,
+     -0.077709,
+     -0.003543,
+     0.99697,
+     -0.051213
+    ],
+    [
+     0.996042,
+     -0.029842,
+     0.083729,
+     -0.041544,
+     0.029391,
+     0.999546,
+     0.006617,
+     -0.003627,
+     -0.083889,
+     -0.00413,
+     0.996467,
+     -0.05238
+    ],
+    [
+     0.995408,
+     -0.030173,
+     0.090848,
+     -0.041395,
+     0.029613,
+     0.999533,
+     0.007506,
+     -0.003951,
+     -0.091032,
+     -0.004782,
+     0.995837,
+     -0.057644
+    ],
+    [
+     0.994783,
+     -0.031024,
+     0.097177,
+     -0.039548,
+     0.030306,
+     0.999501,
+     0.008861,
+     -0.003656,
+     -0.097403,
+     -0.00587,
+     0.995228,
+     -0.058866
+    ],
+    [
+     0.993878,
+     -0.031565,
+     0.105874,
+     -0.038911,
+     0.030732,
+     0.999483,
+     0.009484,
+     -0.002993,
+     -0.106118,
+     -0.006172,
+     0.994334,
+     -0.059784
+    ],
+    [
+     0.993009,
+     -0.032537,
+     0.113466,
+     -0.036356,
+     0.031576,
+     0.999449,
+     0.010253,
+     -0.002512,
+     -0.113737,
+     -0.006599,
+     0.993489,
+     -0.060348
+    ],
+    [
+     0.992023,
+     -0.032841,
+     0.121701,
+     -0.036497,
+     0.031768,
+     0.999437,
+     0.010753,
+     -0.001159,
+     -0.121985,
+     -0.006801,
+     0.992509,
+     -0.060551
+    ],
+    [
+     0.990962,
+     -0.033528,
+     0.129883,
+     -0.036834,
+     0.032196,
+     0.999405,
+     0.012348,
+     -0.000266,
+     -0.13022,
+     -0.008054,
+     0.991452,
+     -0.061095
+    ],
+    [
+     0.9896,
+     -0.034861,
+     0.139559,
+     -0.037137,
+     0.033301,
+     0.999354,
+     0.013496,
+     -0.000822,
+     -0.139939,
+     -0.008708,
+     0.990122,
+     -0.065281
+    ],
+    [
+     0.988667,
+     -0.036144,
+     0.145707,
+     -0.033725,
+     0.03438,
+     0.999302,
+     0.014614,
+     0.00065,
+     -0.146134,
+     -0.009439,
+     0.98922,
+     -0.065032
+    ],
+    [
+     0.987342,
+     -0.03732,
+     0.15415,
+     -0.034268,
+     0.035257,
+     0.999249,
+     0.016091,
+     0.00248,
+     -0.154635,
+     -0.010453,
+     0.987916,
+     -0.064979
+    ],
+    [
+     0.986039,
+     -0.03854,
+     0.161992,
+     -0.035543,
+     0.036049,
+     0.999183,
+     0.018291,
+     0.001622,
+     -0.162565,
+     -0.012196,
+     0.986622,
+     -0.066506
+    ],
+    [
+     0.9848,
+     -0.040487,
+     0.168909,
+     -0.033479,
+     0.037522,
+     0.999081,
+     0.020712,
+     0.002268,
+     -0.169593,
+     -0.014059,
+     0.985414,
+     -0.069024
+    ],
+    [
+     0.983353,
+     -0.042613,
+     0.17664,
+     -0.031687,
+     0.039153,
+     0.998968,
+     0.023031,
+     0.004291,
+     -0.177439,
+     -0.015732,
+     0.984006,
+     -0.065484
+    ],
+    [
+     0.981929,
+     -0.043296,
+     0.184231,
+     -0.031358,
+     0.039323,
+     0.99891,
+     0.025164,
+     0.004222,
+     -0.185119,
+     -0.017465,
+     0.982561,
+     -0.067297
+    ],
+    [
+     0.980196,
+     -0.044647,
+     0.192932,
+     -0.030705,
+     0.039983,
+     0.998808,
+     0.028004,
+     0.004285,
+     -0.193953,
+     -0.019736,
+     0.980812,
+     -0.066991
+    ],
+    [
+     0.978655,
+     -0.04554,
+     0.200401,
+     -0.02937,
+     0.040246,
+     0.998727,
+     0.030412,
+     0.004947,
+     -0.201531,
+     -0.021698,
+     0.979242,
+     -0.065171
+    ],
+    [
+     0.977007,
+     -0.047526,
+     0.207843,
+     -0.025489,
+     0.041502,
+     0.998585,
+     0.033252,
+     0.005405,
+     -0.20913,
+     -0.023861,
+     0.977597,
+     -0.06527
+    ],
+    [
+     0.974879,
+     -0.048985,
+     0.217281,
+     -0.02563,
+     0.042217,
+     0.998471,
+     0.035683,
+     0.006142,
+     -0.218697,
+     -0.025613,
+     0.975457,
+     -0.062303
+    ],
+    [
+     0.973203,
+     -0.049358,
+     0.224586,
+     -0.023986,
+     0.041833,
+     0.998396,
+     0.038147,
+     0.005145,
+     -0.226109,
+     -0.02773,
+     0.973707,
+     -0.065423
+    ],
+    [
+     0.971769,
+     -0.048392,
+     0.230917,
+     -0.024416,
+     0.040284,
+     0.998399,
+     0.039701,
+     0.00463,
+     -0.232468,
+     -0.029278,
+     0.972163,
+     -0.069832
+    ]
+   ]
+  }
  }
 ];
 const viewer = new Viewer4D(document.getElementById("v4d"), { bg: [1, 1, 1] }), thumbs = document.getElementById("scene-thumbs");
@@ -5202,13 +6591,26 @@ pickScene(SCN[0].id);
   async function activate(s) {
     if (!s.meta) { s.meta = { tile: 256, cols: 6 };
       s.ours.src = D + s.id + "/ours.mp4"; s.inp.src = D + s.id + "/input.mp4"; loadBase(s); }
-    for (const v of [s.ours, s.base, s.inp]) { v.currentTime = 0; v.play().catch(() => {}); }
+    for (const v of [s.ours, s.base, s.inp]) v.play().catch(() => {});
+  }
+  const off = k => { const n = slides.length; let d = ((k - st.i) % n + n) % n; if (d > n / 2) d -= n; return d; };   // circular offset
+  const near = () => slides.filter((_, k) => Math.abs(off(k)) <= 1);
+  function layout() {
+    slides.forEach((s, k) => { const d = off(k), a = Math.abs(d);
+      s.el.style.transform = "translateX(" + (d * 78) + "%) scale(" + (a ? 0.78 : 1) + ")"; s.el.style.zIndex = String(10 - a);
+      s.el.style.opacity = a > 1 ? 0 : a ? 0.55 : 1; s.el.classList.toggle("side", a === 1); s.el.classList.toggle("off", a > 1);
+      s.el.setAttribute("aria-hidden", String(a !== 0)); });
   }
   function go(i) {
-    const prev = S(); for (const v of [prev.ours, prev.base, prev.inp]) v.pause();
-    st.i = (i + slides.length) % slides.length; track.style.transform = "translateX(" + (-100 * st.i) + "%)";
-    [...dots.children].forEach((d, k) => d.setAttribute("aria-current", String(k === st.i))); activate(S());
+    st.i = (i + slides.length) % slides.length; layout();
+    [...dots.children].forEach((d, k) => d.setAttribute("aria-current", String(k === st.i)));
+    const keep = near(); for (const s of slides) if (!keep.includes(s)) for (const v of [s.ours, s.base, s.inp]) v.pause();
+    for (const s of keep) activate(s);
   }
+  slides.forEach((s, k) => s.el.addEventListener("click", () => { if (off(k) !== 0) go(k); }));
+  let sw = null; const car = document.querySelector("#compare-slides .cs-car");   // swipe on the side cards / background
+  car.addEventListener("pointerdown", e => { if (!e.target.closest("canvas, .scmp-handle")) sw = e.clientX; });
+  car.addEventListener("pointerup", e => { if (sw !== null && Math.abs(e.clientX - sw) > 50) go(st.i + (e.clientX < sw ? 1 : -1)); sw = null; });
   document.querySelector("#compare-slides .prev").addEventListener("click", () => go(st.i - 1));
   document.querySelector("#compare-slides .next").addEventListener("click", () => go(st.i + 1));
   const bEl = document.getElementById("cs-bases");
@@ -5226,8 +6628,9 @@ pickScene(SCN[0].id);
     s.cv.addEventListener("pointerup", () => { drag = null; });
   }
   setSplit(0.5);
-  function draw() {
-    const s = S(), m = s.meta, c = s.cv.getContext("2d"), W = s.cv.width, H = s.cv.height;
+  function draw() { for (const s of near()) drawSlide(s); requestAnimationFrame(draw); }
+  function drawSlide(s) {
+    const m = s.meta, c = s.cv.getContext("2d"), W = s.cv.width, H = s.cv.height;
     if (m && s.ours.readyState >= 2) {
       if (s.base.readyState >= 2 && Math.abs(s.base.currentTime - s.ours.currentTime) > 0.15) s.base.currentTime = s.ours.currentTime;
       const k = ((Math.round(st.az) % 24) + 24) % 24, T = m.tile, sx = (k % m.cols) * T, sy = Math.floor(k / m.cols) * T, x = Math.round(W * st.split);
@@ -5235,7 +6638,6 @@ pickScene(SCN[0].id);
       c.save(); c.beginPath(); c.rect(0, 0, x, H); c.clip(); c.drawImage(s.ours, sx, sy, T, T, 0, 0, W, H); c.restore();
       if (s.base.readyState >= 2) { c.save(); c.beginPath(); c.rect(x, 0, W - x, H); c.clip(); c.drawImage(s.base, sx, sy, T, T, 0, 0, W, H); c.restore(); }
     }
-    requestAnimationFrame(draw);
   }
   let started = false;
   new IntersectionObserver(es => { if (es[0].isIntersecting && !started) { started = true; go(0); requestAnimationFrame(draw); } }, { rootMargin: "300px" })
