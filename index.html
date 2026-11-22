@@ -6221,15 +6221,16 @@ pickScene(SCN[0].id);
 <script>
 /* ---------- sliding comparison: per-clip ours | baseline turntable sprites ---------- */
 (() => {
-  const CS_CLIPS = [["camel","Camel"],["dog","Dog"],["horsejump-high","Horse jump"],["libby","Libby"],["robot","Robot"]];
+  const CS_CLIPS = [["bear","Bear"],["swing","Swing"],["soapbox","Soapbox"],["rhino","Rhino"],["libby","Libby"],["cows","Cows"],["bicycle","Bicycle"]];
   const SB = [["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
-                 ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
+                 ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"]];   // BANMo returns when its 512 renders finish
+  const CS_META = {"bear": {"tile": 512, "cols": 6}, "bicycle": {"tile": 512, "cols": 6}, "cows": {"tile": 512, "cols": 6}, "libby": {"tile": 512, "cols": 6}, "rhino": {"tile": 512, "cols": 6}, "soapbox": {"tile": 512, "cols": 6}, "swing": {"tile": 512, "cols": 6}};
   const D = "static/cmpslide/", track = document.getElementById("cs-track"), dots = document.getElementById("cs-dots");
   const st = { i: 0, base: "lift4d", az: 0, split: 0.5, idle: 0 };
   const mkVid = () => { const v = document.createElement("video"); v.muted = true; v.loop = true; v.playsInline = true; v.preload = "none"; return v; };
   const slides = CS_CLIPS.map(([id, label], i) => {
     const el = document.createElement("div"); el.className = "cs-slide"; el.setAttribute("aria-roledescription", "slide"); el.setAttribute("aria-label", label);
-    el.innerHTML = '<video class="inp" muted loop playsinline preload="none"></video><div class="cs-cell"><canvas width="768" height="768" aria-label="Ours vs. baseline: drag to rotate"></canvas>' +
+    el.innerHTML = '<video class="inp" muted loop playsinline preload="none"></video><div class="cs-cell"><canvas width="1024" height="1024" aria-label="Ours vs. baseline: drag to rotate"></canvas>' +
       '<span class="scmp-tag l">Ours</span><span class="scmp-tag r"></span><div class="scmp-line"></div><div class="scmp-handle" role="slider" tabindex="0" aria-label="Comparison divider">⇔</div></div>' +
       '<div class="cs-cap"></div>';
     el.querySelector(".cs-cap").textContent = label; track.appendChild(el);
@@ -6242,7 +6243,9 @@ pickScene(SCN[0].id);
   function loadBase(s) { s.base.src = D + s.id + "/" + st.base + ".mp4"; s.el.querySelector(".scmp-tag.r").textContent = SB.find(b => b[0] === st.base)[1];
     if (s === S()) { s.base.currentTime = s.ours.currentTime || 0; s.base.play().catch(() => {}); } }
   function activate(s, live) {   // neighbours load and hold their first frame; only the centred slide plays, from the start
-    if (!s.meta) { s.meta = { tile: 256, cols: 6 }; for (const v of [s.ours, s.base, s.inp]) v.preload = "auto";
+    if (!s.meta) { s.meta = CS_META[s.id] || { tile: 512, cols: 6 };   // build_site inlines CS_META (file:// cannot fetch)
+      if (!CS_META[s.id]) fetch(D + s.id + "/index.json").then(r => r.json()).then(j => { s.meta = { tile: j.tile, cols: j.cols }; }).catch(() => {});
+      for (const v of [s.ours, s.base, s.inp]) v.preload = "auto";
       s.ours.src = D + s.id + "/ours.mp4"; s.inp.src = D + s.id + "/input.mp4"; loadBase(s); }
     for (const v of [s.ours, s.base, s.inp]) { if (live) { v.currentTime = 0; v.play().catch(() => {}); } else { v.pause(); v.currentTime = 0; } }
   }
