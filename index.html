@@ -147,12 +147,12 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
 .cg-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px }
 .cg-bar .cg-note { color: var(--muted); font-size: 0.85rem; margin-left: auto }
 .cg-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch }
-.cg { display: grid; grid-template-columns: 30px repeat(5, minmax(92px, 1fr)); gap: 4px 6px; min-width: 520px; touch-action: pan-y; user-select: none; cursor: grab }
+.cg { display: grid; grid-template-columns: repeat(10, minmax(60px, 1fr)); gap: 4px; max-width: 980px; margin: 0 auto; min-width: 620px; touch-action: pan-y; user-select: none; cursor: grab }
 .cg:active { cursor: grabbing }
-.cg .lab { writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: center; justify-content: center;
-  font: 600 0.74rem/1.1 Inter, sans-serif; color: var(--muted); text-align: center; white-space: nowrap }
+.cg .lab { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px;
+  font: 600 0.7rem/1.15 Inter, sans-serif; color: var(--muted); text-align: center }
 .cg .lab.ours { color: var(--ours) }
-.cg canvas { width: 100%; aspect-ratio: 1; display: block; background: var(--stage); border-radius: 6px; border: 1px solid var(--line) }
+.cg canvas { width: 100%; aspect-ratio: 1; display: block; background: var(--stage); border-radius: 4px; border: 1px solid var(--line) }
 .cg canvas.in { border-color: var(--fg) }
 .cg canvas.ours { border: 2px solid var(--ours) }
 .cg .sep { grid-column: 1 / -1; height: 4px }
@@ -277,7 +277,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <div class="head">
       <div class="kicker">Interactive · all methods</div>
       <h2>Every method, rotating together</h2>
-      <p class="lede">Columns are input videos, rows are methods. <b>Drag any object</b> to turn every reconstruction in the grid at once: all renders share the same camera ring around the object, starting from the input view. White background, 12 fps.</p>
+      <p class="lede">Rows are input videos, columns are methods. <b>Drag any object</b> to turn every reconstruction in the grid at once: all renders share the same camera ring around the object, starting from the input view. White background, 12 fps.</p>
     </div>
     <div class="cg-bar">
       <button class="chip" id="cg-play" aria-pressed="true">Playing</button>
@@ -5041,11 +5041,10 @@ pickScene(SCN[0].id);
   const METH = [["ours","Ours"],["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
                 ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"],["banmo","BANMo"]];
   const T = 160, COLS = 12, NA = 24, grid = document.getElementById("cg"), vids = {}, cells = [];
-  const row = (label, cls, tile) => {
-    const l = document.createElement("div"); l.className = "lab " + cls; l.textContent = label; grid.appendChild(l);
-    for (const c of CLIPS) { const cv = document.createElement("canvas"); cv.width = cv.height = T; cv.className = cls; grid.appendChild(cv); cells.push([cv.getContext("2d"), c, tile]); }
-  };
-  row("Input", "in", -1); METH.forEach(([id, name], i) => row(name, i ? "" : "ours", i));
+  const COLSPEC = [["Input", "in", -1], ...METH.map(([id, name], i) => [name, i ? "" : "ours", i])];   // columns = input + methods, rows = clips
+  for (const [name, cls] of COLSPEC) { const l = document.createElement("div"); l.className = "lab " + cls; l.textContent = name; grid.appendChild(l); }
+  for (const c of CLIPS) for (const [, cls, tile] of COLSPEC) {
+    const cv = document.createElement("canvas"); cv.width = cv.height = T; cv.className = cls; grid.appendChild(cv); cells.push([cv.getContext("2d"), c, tile]); }
   for (const c of CLIPS) { const v = document.createElement("video"); Object.assign(v, { muted: true, loop: true, playsInline: true, preload: "none" });
     v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.dataset.src = "static/cmpgrid/" + c + ".mp4"; vids[c] = v; }
   let az = 0, playing = true, spin = true, lastUser = -1e9, started = false, visible = false;
