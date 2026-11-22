@@ -55,7 +55,7 @@ section { padding-block: 56px; border-top: 1px solid var(--line) }
 .reel { background: #05080c; margin-top: 16px; padding-block: 0 }
 .reel video { display: block; width: 100%; max-width: 1600px; margin: 0 auto; aspect-ratio: 16 / 9; background: #05080c }
 .teaser { margin-top: 34px }
-.teaser img { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); background: #fff; display: block }
+.teaser img, .teaser video { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); background: #fff; display: block }
 .cap { color: var(--muted); font-size: 0.9rem; margin-top: 10px }
 .cap b { color: var(--fg) }
 .abstract p { max-width: 72ch; margin: 0 auto; text-align: justify; hyphens: auto }
@@ -191,10 +191,6 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
 
 
 
-<section class="reel" aria-label="Teaser video">
-  <video src="static/teaser.mp4" autoplay muted loop playsinline preload="auto"></video>
-</section>
-
 <header class="hero wrap">
   <h1><span class="name">4DAnything</span></h1>
   <p class="sub">Generalizable Feed-Forward 4D Reconstruction In-The-Wild</p>
@@ -207,7 +203,7 @@ footer { padding-block: 36px 48px; border-top: 1px solid var(--line); color: var
     <a class="btn" aria-disabled="true">Weights &amp; Data</a>
   </div>
   <figure class="teaser" style="margin-inline:0">
-    <img src="static/img/teaser.jpg" alt="Input video frames above composed 4D scene reconstructions with motion tracks: a dog jumping through a hoop, a person walking several dogs on a crosswalk, and a quadruped robot on a ramp.">
+    <video src="static/teaser.mp4" autoplay muted loop playsinline preload="auto" aria-label="Teaser video"></video>
     <figcaption class="cap"><b>Feed-forward complete 4D reconstruction on in-the-wild videos.</b> From a casual monocular video, 4DAnything reconstructs every dynamic object as a complete 4D Gaussian asset (geometry, appearance, deformation and camera-space motion) in one forward pass.</figcaption>
   </figure>
 </header>
