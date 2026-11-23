@@ -6202,12 +6202,12 @@ pickScene(SCN[0].id);
 <script>
 /* ---------- sliding comparison: per-clip ours | baseline turntable sprites ---------- */
 (() => {
-  const CS_CLIPS = [["bear","Bear"],["swing","Swing"],["soapbox","Soapbox"],["rhino","Rhino"],["libby","Libby"],["cows","Cows"],["bicycle","Bicycle"]];
+  const CS_CLIPS = [["bicycle","Bicycle"],["bear","Bear"],["swing","Swing"],["soapbox","Soapbox"],["rhino","Rhino"],["libby","Libby"],["cows","Cows"]];
   const SB = [["sam3d_perframe","SAM3D per-frame"],["actionmesh","ActionMesh"],["m3t4","Motion 3-to-4"],["mesh4d","Mesh4D"],
                  ["genia","GenIA"],["lift4d","Lift4D"],["pad3r","PAD3R"]];   // BANMo returns when its 512 renders finish
   const CS_META = {"bear": {"tile": 512, "cols": 6}, "bicycle": {"tile": 512, "cols": 6}, "cows": {"tile": 512, "cols": 6}, "libby": {"tile": 512, "cols": 6}, "rhino": {"tile": 512, "cols": 6}, "soapbox": {"tile": 512, "cols": 6}, "swing": {"tile": 512, "cols": 6}};
   const D = "static/cmpslide/", track = document.getElementById("cs-track"), dots = document.getElementById("cs-dots");
-  const st = { i: 0, base: "lift4d", az: 0, split: 0.5, idle: 0 };
+  const st = { i: 0, base: "genia", az: 0, split: 0.5, idle: 0 };
   const mkVid = () => { const v = document.createElement("video"); v.muted = true; v.loop = true; v.playsInline = true; v.preload = "none"; return v; };
   const slides = CS_CLIPS.map(([id, label], i) => {
     const el = document.createElement("div"); el.className = "cs-slide"; el.setAttribute("aria-roledescription", "slide"); el.setAttribute("aria-label", label);
