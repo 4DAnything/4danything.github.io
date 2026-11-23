@@ -57,6 +57,7 @@ section { padding-block: 56px; border-top: 1px solid var(--line) }
 .teaser { margin-top: 34px }
 .teaser video { max-width: 720px; margin-inline: auto }
 .teaser img, .teaser video { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); background: #fff; display: block }
+.teaser video { height: auto; aspect-ratio: 16 / 9; object-fit: cover }   /* no sub-pixel letterbox (Safari paints it black) */
 .cap { color: var(--muted); font-size: 0.9rem; margin-top: 10px }
 .cap b { color: var(--fg) }
 .abstract p { max-width: 72ch; margin: 0 auto; text-align: justify; hyphens: auto }
