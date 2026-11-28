@@ -168,3 +168,4 @@ static/viz/selected-window-1108-025737-ss50-slat75-1112/object3.4dgs.delta.gz fi
 static/viz/selected-window-1108-025737-ss50-slat75-1112/object4-smooth2.4dgs.delta.gz filter=lfs diff=lfs merge=lfs -text
 static/viz/selected-window-1108-025737-ss50-slat75-1112/scene.bin filter=lfs diff=lfs merge=lfs -text
 static/viz/selected-window-1108-025737-ss50-slat75-1112/object4-300k.4dgs.delta.gz filter=lfs diff=lfs merge=lfs -text
+static/viz/excavator_ballet/excavator_ballet-300k.4dgs.delta.gz filter=lfs diff=lfs merge=lfs -text
