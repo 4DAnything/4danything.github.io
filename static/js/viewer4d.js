@@ -11,18 +11,31 @@ layout(location=1) in vec3 aPos;
 layout(location=2) in vec3 aScale;
 layout(location=3) in vec4 aColor;
 layout(location=4) in vec4 aRot;
+layout(location=5) in vec3 bPos;
+layout(location=6) in vec3 bScale;
+layout(location=7) in vec4 bColor;
+layout(location=8) in vec4 bRot;
 uniform mat4 uView, uProj;
 uniform vec2 uFocal, uViewport;
+uniform float uMix;
 out vec4 vColor; out vec2 vPos;
+vec4 interpolateRotation(vec4 a, vec4 b, float t) {
+  float d = dot(a, b); if (d < 0.0) { b = -b; d = -d; }
+  if (d > 0.9995) return normalize(mix(a, b, t));
+  float angle = acos(clamp(d, 0.0, 1.0));
+  return (sin((1.0-t)*angle)*a + sin(t*angle)*b) / sin(angle);
+}
 void main() {
-  vec4 cam = uView * vec4(aPos, 1.0);
+  vec4 cam = uView * vec4(mix(aPos, bPos, uMix), 1.0);
   if (cam.z < 0.05) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
   vec4 q = normalize(aRot * (255.0/128.0) - 1.0);
+  if (uMix > 0.0) q = interpolateRotation(q, normalize(bRot * (255.0/128.0) - 1.0), uMix);
   float w=q.x, x=q.y, y=q.z, z=q.w;
   mat3 R = mat3(1.-2.*(y*y+z*z), 2.*(x*y+w*z), 2.*(x*z-w*y),
                 2.*(x*y-w*z), 1.-2.*(x*x+z*z), 2.*(y*z+w*x),
                 2.*(x*z+w*y), 2.*(y*z-w*x), 1.-2.*(x*x+y*y));
-  mat3 S = mat3(aScale.x,0.,0., 0.,aScale.y,0., 0.,0.,aScale.z);
+  vec3 scale = uMix > 0.0 ? exp(mix(log(aScale), log(bScale), uMix)) : aScale;
+  mat3 S = mat3(scale.x,0.,0., 0.,scale.y,0., 0.,0.,scale.z);
   mat3 M = S * R; mat3 cov3 = transpose(M) * M; mat3 W = mat3(uView);
   float iz = 1.0 / cam.z;
   mat3 J = mat3(uFocal.x*iz, 0., 0., 0., uFocal.y*iz, 0., -uFocal.x*cam.x*iz*iz, -uFocal.y*cam.y*iz*iz, 0.);
@@ -34,7 +47,7 @@ void main() {
   vec2 major = min(sqrt(2.0*l1), 1024.0) * e1, minor = min(sqrt(2.0*l2), 1024.0) * vec2(-e1.y, e1.x);
   vec4 clip = uProj * cam;
   vec2 off = (corner.x*major + corner.y*minor) / uViewport * 2.0 * clip.w;
-  gl_Position = vec4(clip.xy + off, clip.z, clip.w); vColor = aColor; vPos = corner;
+  gl_Position = vec4(clip.xy + off, clip.z, clip.w); vColor = mix(aColor, bColor, uMix); vPos = corner;
 }`;
 const FS = `#version 300 es
 precision highp float;
@@ -61,16 +74,22 @@ in vec3 vC; out vec4 frag; void main() { frag = vec4(vC, 1.0); }`;
 
 const TVS = `#version 300 es
 precision highp float;
-layout(location=0) in vec3 aP; layout(location=1) in vec4 aC; uniform mat4 uView, uProj; out vec4 vC;
-void main() { vC = aC; gl_Position = uProj * (uView * vec4(aP, 1.0)); }`;
+layout(location=0) in vec4 aP; layout(location=1) in vec4 aC;
+uniform float uPointSize; out vec4 vC;
+void main() { vC = aC; gl_Position = aP; gl_PointSize = uPointSize; }`;
 const TFS = `#version 300 es
 precision highp float;
-in vec4 vC; out vec4 frag; void main() { frag = vC; }`;
-const GZ_MAGIC = 0x5A443456, NTRACK = 400;
+in vec4 vC; uniform bool uRound; out vec4 frag;
+void main() {
+  float coverage = 1.0;
+  if (uRound) { vec2 p = gl_PointCoord * 2.0 - 1.0; coverage = 1.0 - smoothstep(0.7, 1.0, dot(p, p)); }
+  frag = vec4(vC.rgb, vC.a * coverage);
+}`;
+const GZ_MAGIC = 0x5A443456;
 
-function hue(h, tint) {              // bright rainbow, optionally pulled toward a tint
-  const c = [0, 2, 4].map(k => 0.5 + 0.5 * Math.cos(6.2832 * (h + k / 6)));
-  return tint ? c.map((v, k) => 0.45 * v + 0.55 * tint[k]) : c;
+function heightColor(height) {       // teaser palette: blue at low initial height, red at high initial height
+  const h = (1 - height) * 0.667;
+  return [0, 2/3, 1/3].map(offset => Math.max(0, Math.min(1, Math.abs(((h + offset) % 1) * 6 - 3) - 1)));
 }
 function mm3(A, B) { const C = new Array(9); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i*3+j] = A[i*3]*B[j] + A[i*3+1]*B[3+j] + A[i*3+2]*B[6+j]; return C; }
 function rotX(a) { const c = Math.cos(a), s = Math.sin(a); return [1,0,0, 0,c,-s, 0,s,c]; }
@@ -83,16 +102,10 @@ function lru(keep, build) {
   return f => { let v = c.get(f); if (!v) { v = build(f); c.set(f, v); if (c.size > keep) c.delete(c.keys().next().value); } return v; };
 }
 
-function trackIdx(n, alpha) {         // deterministic spread of fairly opaque splats
-  const out = [], step = Math.max(1, Math.floor(n / (NTRACK * 4)));
-  for (let i = 0; i < n && out.length < NTRACK; i += step) if (alpha(i) > 160) out.push(i);
-  return out;
-}
-
 function tracksOf(F, idx, posAt) {
   const K = idx.length, tr = new Float32Array(F * K * 3);
   for (let f = 0; f < F; f++) { const P = posAt(f); for (let j = 0; j < K; j++) { const i = idx[j]; tr.set(P.subarray(i * 3, i * 3 + 3), (f * K + j) * 3); } }
-  return { K, pos: tr };
+  return { F, K, pos: tr };
 }
 
 function expScl(n, get, l0, ls) {     // log-quantized u8 scales -> linear
@@ -121,7 +134,7 @@ async function parse4dgz(ab) {        // gzip; static sca/rgba (planar), 2^bits 
     return out; });
   const obj = { F, fps, tracked: true, nAt: () => n, posAt, rotAt: f => rot.subarray(f * n * 4, (f + 1) * n * 4),
                 sclAt: () => scl, sclMul: f => Math.exp(rg[2*f] - rg[0]), rgbaAt: () => rgba };
-  obj.tracks = tracksOf(F, trackIdx(n, i => rgba[i*4+3]), posAt); return obj;
+  return obj;
 }
 
 function parse4dgs(ab) {             // v2 (per-frame 18 B records) or v3 (static sca/rgba, per-frame pos + rot)
@@ -136,7 +149,7 @@ function parse4dgs(ab) {             // v2 (per-frame 18 B records) or v3 (stati
       return out; });
     const obj = { F, fps, tracked: true, nAt: () => n, posAt, rotAt: f => u8.subarray(f0 + f * 10 * n + 6 * n, f0 + (f + 1) * 10 * n),
                   sclAt: () => scl, sclMul: f => Math.exp(H[f*8+6] - H[6]), rgbaAt: () => rgba };
-    obj.tracks = tracksOf(F, trackIdx(n, i => rgba[i*4+3]), posAt); return obj;
+    return obj;
   }
   const counts = new Uint32Array(ab, 16, F), H = new Float32Array(ab.slice(16 + 4*F, 16 + 36*F)), offs = [];
   let off = 16 + 36*F; for (let f = 0; f < F; f++) { offs.push(off); off += counts[f] * 18; }
@@ -147,7 +160,6 @@ function parse4dgs(ab) {             // v2 (per-frame 18 B records) or v3 (stati
   const sclAt = lru(3, f => { const s = field(f, 3, 6); return expScl(counts[f], i => s[i], H[f*8+6], (H[f*8+7] - H[f*8+6]) / 255); });
   const obj = { F, fps, tracked: [...counts].every(c => c === counts[0]), nAt: f => counts[f], posAt, sclAt, sclMul: () => 1,
                 rgbaAt: lru(3, f => field(f, 4, 9)), rotAt: lru(3, f => field(f, 4, 13)) };
-  if (obj.tracked) { const c = obj.rgbaAt(0); obj.tracks = tracksOf(F, trackIdx(counts[0], i => c[i*4+3]), posAt); }
   return obj;
 }
 
@@ -178,10 +190,25 @@ function mergeObjects(objs) {        // several objects as one stream (per-frame
     sclAt: cat((o, f) => { const s = o.sclAt(f), m = o.sclMul(f); if (m === 1) return s; const t = new Float32Array(s.length); for (let i = 0; i < s.length; i++) t[i] = s[i] * m; return t; }, 3, Float32Array) };
   const tk = objs.filter(o => o.tracks), K = tk.reduce((s, o) => s + o.tracks.K, 0), tr = new Float32Array(F * K * 3);
   for (let f = 0; f < F; f++) { let j = 0; for (const o of tk) { tr.set(o.tracks.pos.subarray(f * o.tracks.K * 3, (f + 1) * o.tracks.K * 3), (f * K + j) * 3); j += o.tracks.K; } }
-  obj.tracks = K ? { K, pos: tr } : null; return obj;
+  const colors = new Float32Array(K * 3); let colorOffset = 0;
+  for (const o of tk) { colors.set(o.tracks.colors, colorOffset); colorOffset += o.tracks.K * 3; }
+  obj.tracks = K ? { F, K, pos: tr, colors } : null; return obj;
 }
 
-async function parseAny(ab, u) { return /\.4dgz(\.js)?$/.test(u) ? parse4dgz(ab) : parse4dgs(ab); }
+async function parseAny(ab, u) {
+  if (/\.4dgz(\.js)?$/.test(u)) return parse4dgz(ab);
+  if (/\.4dgs(?:\.delta)?\.gz$/.test(u)) ab = await new Response(new Blob([ab]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  if (/\.4dgs\.delta\.gz$/.test(u)) {
+    const d = new DataView(ab), F = d.getUint32(4, true), n = d.getUint32(16, true), h = 16 + 36 * F;
+    const planes = new Uint8Array(ab), records = new Uint8Array(ab.byteLength); records.set(planes.subarray(0, h));
+    for (let f = 0; f < F; f++) for (let k = 0; k < 18; k++) for (let i = 0; i < n; i++) {
+      const dst = h + (f*n+i)*18+k;
+      records[dst] = planes[h+(f*18+k)*n+i] + (f ? records[dst-18*n] : 0);
+    }
+    ab = records.buffer;
+  }
+  return parse4dgs(ab);
+}
 
 function side(obj) { return { obj, ord: null, ordEpoch: -1, ordFrame: -1, stamp: 0, buf: null, bufKey: "" }; }
 
@@ -192,7 +219,7 @@ class Viewer4D {
     this.ui = { play: root.querySelector("[data-v=play]"), frame: root.querySelector("[data-v=frame]"),
                 fno: root.querySelector("[data-v=fno]"), scene: root.querySelector("[data-v=scene]"),
                 reset: root.querySelector("[data-v=reset]"), camchk: root.querySelector("[data-v=cam]"), trk: root.querySelector("[data-v=tracks]"), load: root.querySelector("[data-v=load]"),
-                inset: root.querySelector("video[data-v=inset]") };
+                inset: root.querySelector("video[data-v=inset]"), continuous: root.querySelector("[data-v=continuous]") };
     const gl = this.gl = this.canvas.getContext("webgl2", { antialias: false, alpha: false });
     if (!gl) { this.ui.load.textContent = "WebGL2 is not available in this browser."; return; }
     const mk = (vs, fs) => { const p = gl.createProgram();
@@ -205,6 +232,7 @@ class Viewer4D {
     this.sPos = gl.createBuffer(); this.sCol = gl.createBuffer();
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     this.A = null; this.nF = 0; this.epoch = 0; this.cur = 0; this.playing = true; this.fps = 8;
+    this.playhead = 0; this.continuous = opts.continuous ?? !!(this.ui.continuous && this.ui.continuous.checked);
     this.sceneN = 0; this.showScene = true; this.visible = true; this.token = 0;
     this.bg = opts.bg || [1, 1, 1]; this.speed = opts.speed || 1.0;
     this.bindControls(); this.loop();
@@ -218,14 +246,20 @@ class Viewer4D {
       const bufs = await Promise.all(def.objects.map(getBin));
       const sceneAb = def.scene ? await getBin(def.scene).catch(() => null) : null;
       if (tok !== this.token) return;
-      const objs = await Promise.all(bufs.map((b, i) => parseAny(b, def.objects[i]))), m = objs.length > 1 ? mergeObjects(objs) : objs[0];
+      const objs = await Promise.all(bufs.map((b, i) => parseAny(b, def.objects[i])));
       if (tok !== this.token) return;
-      this.A = null; this.A = side(m); this.nF = m.F; this.fps = m.fps; this.tracks = m.tracks;
+      const C = def.cams && def.cams.c2w && def.cams.c2w[0];
+      this.trackUp = def.cam_up || (C ? [-C[1], -C[5], -C[9]] : [0, -1, 0]);
+      this.buildTracks(objs);
+      const m = objs.length > 1 ? mergeObjects(objs) : objs[0];
+      if (this.A) for (const buffer of [this.A.glBuf, this.A.glBufNext]) if (buffer) this.gl.deleteBuffer(buffer);
+      this.A = side(m); this.nF = m.F; this.fps = m.fps; this.tracks = m.tracks;
       this.sceneN = 0; if (sceneAb) this.loadScene(sceneAb);
-      this.fitView(def.view); this.buildCams(def.cams); this.cur = 0; this.acc = 0; this.epoch++;
+      this.fitView(def.view); this.buildCams(def.cams); this.cur = 0; this.playhead = 0; this.epoch++;
       this.ui.frame.max = this.nF - 1;
+      this.setContinuous(this.continuous);
       const v = this.ui.inset;
-      if (v) { if (def.input) { v.src = def.input; v.hidden = false; v.play().catch(() => {}); } else { v.removeAttribute("src"); v.hidden = true; } }
+      if (v) { if (def.input) { v.src = def.input; v.hidden = false; if (this.playing) v.play().catch(() => {}); } else { v.removeAttribute("src"); v.hidden = true; } }
       this.ui.load.hidden = true;
     } catch (e) { if (tok === this.token) this.ui.load.textContent = "Could not load scene (" + e.message + ")."; }
   }
@@ -258,11 +292,12 @@ class Viewer4D {
 
   drawCams(view, proj) {
     const gl = this.gl, p = this.qprog, U = n => gl.getUniformLocation(p, n), c = this.cam, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
-    const fr = c.fr[Math.min(this.cur, c.fr.length - 1)], M = new Float32Array(16);
+    const t = Math.min(this.cur, c.fr.length - 1), f = Math.floor(t), u = t - f;
+    const fr = u ? c.fr[f].map((v, k) => v + u * (c.fr[f + 1][k] - v)) : c.fr[f], M = new Float32Array(16);
     for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) { let v = 0; for (let m = 0; m < 4; m++) v += proj[m*4+r] * view[k*4+m]; M[k*4+r] = v; }
     const path = []; for (let i = 0; i + 5 < c.path.length; i += 3) path.push(...c.path.subarray(i, i + 6));
     gl.useProgram(p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-    for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
+    for (let i = 0; i < 9; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
     for (const [seg, px, col] of [[path, 1.2, [0.2, 0.2, 0.2, 0.55]], [fr, 2.2, [0.255, 0.514, 0.769, 1.0]]]) {
       const q = this.thickLines(seg, M, W, H, px * devicePixelRatio); if (!q.length) continue;
@@ -271,21 +306,83 @@ class Viewer4D {
     gl.disableVertexAttribArray(0);
   }
 
-  drawTracks(V, tracks, cur, tint) {   // trailing polylines of sampled splats, fading out over the last frames
+  buildTracks(objects) {             // same 2,000-point pool and stride 12 as the teaser, shared across objects
+    const up = this.trackUp || [0, -1, 0], length = Math.hypot(...up) || 1;
+    const perObject = Math.max(1, Math.floor(2000 / objects.length)), parts = [];
+    let offset = 0, lo = Infinity, hi = -Infinity;
+    for (const o of objects) {
+      if (!o.tracked) { o.tracks = null; continue; }
+      const n = o.nAt(0), count = Math.min(perObject, n), ids = [];
+      for (let j = 0; j < count; j++) if ((j + offset) % 12 === 0) ids.push(Math.floor(j * n / count));
+      offset += count;
+      const tr = o.tracks = tracksOf(o.F, ids, o.posAt), heights = new Float32Array(tr.K);
+      for (let j = 0; j < tr.K; j++) {
+        const p = j * 3, h = (tr.pos[p]*up[0] + tr.pos[p+1]*up[1] + tr.pos[p+2]*up[2]) / length;
+        heights[j] = h; lo = Math.min(lo, h); hi = Math.max(hi, h);
+      }
+      parts.push([tr, heights]);
+    }
+    for (const [tr, heights] of parts) {
+      tr.colors = new Float32Array(tr.K * 3);
+      for (let j = 0; j < tr.K; j++) tr.colors.set(heightColor((heights[j] - lo) / Math.max(hi - lo, 1e-8)), j * 3);
+    }
+  }
+
+  drawTracks(V, tracks, cur) {        // Time-faded trajectories with current endpoints.
     if (!tracks || !tracks.K) return;
-    const gl = this.gl, p = this.tprog, U = n => gl.getUniformLocation(p, n), K = tracks.K, T = 10, f0 = Math.max(0, cur - T);
-    if (cur <= f0) return;
-    const nseg = (cur - f0) * K, buf = new Float32Array(nseg * 2 * 7); let o = 0;
-    for (let j = 0; j < K; j++) { const h = (j * 0.618034) % 1, c = hue(h, tint);
-      for (let f = f0; f < cur; f++) { const a = 0.15 + 0.85 * (f + 1 - f0) / (cur - f0);
-        for (const g of [f, f + 1]) { const q = (g * K + j) * 3; buf.set([tracks.pos[q], tracks.pos[q+1], tracks.pos[q+2], c[0], c[1], c[2], g === f ? a * 0.8 : a], o); o += 7; } } }
-    for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
+    const gl = this.gl, p = this.tprog, U = n => gl.getUniformLocation(p, n), K = tracks.K;
+    cur = Math.max(0, Math.min(cur, tracks.F - 1));
+    const start = Math.max(0, cur - 12), times = [start], matrix = new Float32Array(16), lines = [], tips = [];
+    for (let t = (Math.floor(start * 4) + 1) / 4; t < cur; t += .25) times.push(t);
+    if (cur > start) times.push(cur);
+    for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
+      let value = 0; for (let m = 0; m < 4; m++) value += V.proj[m*4+r] * V.view[k*4+m];
+      matrix[k*4+r] = value;
+    }
+    const clips = times.map((time, step) => {
+      const points = new Float32Array(K * 4), f = Math.floor(time), next = Math.min(f + 1, tracks.F - 1), u = time - f;
+      for (let j = 0; j < K; j++) {
+        const pos = [];
+        for (let k = 0; k < 3; k++) {
+          const at = frame => tracks.pos[(frame*K+j)*3+k], a = at(f), b = at(next);
+          // Historical curves use the teaser's cubic interpolation. The tip follows the displayed GS exactly.
+          pos[k] = u && step < times.length - 1
+            ? (2*u**3-3*u**2+1)*a + (u**3-2*u**2+u)*(b-at(Math.max(0, f-1)))*.5
+              + (-2*u**3+3*u**2)*b + (u**3-u**2)*(at(Math.min(tracks.F-1, next+1))-a)*.5
+            : a + (b-a)*u;
+        }
+        for (let k = 0; k < 4; k++) points[j*4+k] = matrix[k]*pos[0] + matrix[4+k]*pos[1] + matrix[8+k]*pos[2] + matrix[12+k];
+      }
+      return points;
+    });
+    const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
+    const vertex = (point, j, time) => [...point, ...tracks.colors.subarray(j*3, j*3+3), Math.max(0, 1-(cur-time)/12)];
+    for (let step = 0; step + 1 < times.length; step++) for (let j = 0; j < K; j++) {
+      const a = clips[step].subarray(j*4, j*4+4), b = clips[step+1].subarray(j*4, j*4+4);
+      if (a[3] < .02 || b[3] < .02) continue;
+      const dx = (b[0]/b[3]-a[0]/a[3])*V.w, dy = (b[1]/b[3]-a[1]/a[3])*V.h, length = Math.hypot(dx, dy);
+      if (length < 1e-5) continue;
+      const nx = -dy/length*.45*dpr/V.w, ny = dx/length*.45*dpr/V.h;
+      const corner = (point, sign, time) => vertex([point[0]+sign*nx*point[3], point[1]+sign*ny*point[3], point[2], point[3]], j, time);
+      const a0 = corner(a, 1, times[step]), a1 = corner(a, -1, times[step]);
+      const b0 = corner(b, 1, times[step+1]), b1 = corner(b, -1, times[step+1]);
+      lines.push(...a0, ...a1, ...b0, ...b0, ...a1, ...b1);
+    }
+    for (let j = 0; j < K; j++) {
+      const point = clips[clips.length-1].subarray(j*4, j*4+4);
+      if (point[3] >= .02) tips.push(...vertex(point, j, cur));
+    }
+    for (let i = 0; i < 9; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
     gl.useProgram(p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-    gl.uniformMatrix4fv(U("uView"), false, V.view); gl.uniformMatrix4fv(U("uProj"), false, V.proj);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuf); gl.bufferData(gl.ARRAY_BUFFER, buf, gl.DYNAMIC_DRAW);
-    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
-    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 12);
-    gl.drawArrays(gl.LINES, 0, nseg * 2); gl.disableVertexAttribArray(0); gl.disableVertexAttribArray(1);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuf);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16);
+    gl.uniform1f(U("uPointSize"), 3*dpr);
+    for (const [data, round, mode] of [[lines, 0, gl.TRIANGLES], [tips, 1, gl.POINTS]]) if (data.length) {
+      gl.uniform1i(U("uRound"), round); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
+      gl.drawArrays(mode, 0, data.length / 8);
+    }
+    gl.disableVertexAttribArray(0); gl.disableVertexAttribArray(1);
   }
 
   loadScene(ab) {
@@ -328,7 +425,9 @@ class Viewer4D {
   }
 
   prepare(S, cur, view) {              // depth order (reused across nearby frames when tracked) + GPU records in that order
-    const o = S.obj; cur = Math.min(cur, o.F - 1);
+    const o = S.obj, time = Math.max(0, Math.min(cur, o.F - 1)); cur = Math.floor(time);
+    S.nextFrame = this.continuous && o.tracked ? Math.min(cur + 1, o.F - 1) : cur;
+    S.mix = S.nextFrame === cur ? 0 : time - cur;
     if (!S.ord || S.ordEpoch !== this.epoch || (!o.tracked && S.ordFrame !== cur) || (o.tracked && Math.abs(cur - S.ordFrame) >= 6)) {
       const P = o.posAt(cur), n = o.nAt(cur), vz0 = view[2], vz1 = view[6], vz2 = view[10];
       if (!S.d || S.d.length < n) { S.d = new Float32Array(n); S.key = new Uint32Array(n); }
@@ -340,14 +439,27 @@ class Viewer4D {
       const idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[cnt[key[i]]++] = i;
       S.ord = idx; S.ordEpoch = this.epoch; S.ordFrame = cur; S.stamp++;
     }
-    const k = cur + ":" + S.stamp; if (S.bufKey === k) return S.ord.length;
-    const n = S.ord.length, ord = S.ord, P = o.posAt(cur), Sc = o.sclAt(cur), m = o.sclMul(cur), C = o.rgbaAt(cur), R = o.rotAt(cur);
-    if (!S.buf || S.buf.byteLength < n * REC) S.buf = new ArrayBuffer(n * REC);
-    const fo = new Float32Array(S.buf, 0, n * 8), bo = new Uint8Array(S.buf, 0, n * REC);
-    for (let i = 0, o8 = 0, ob = 24; i < n; i++, o8 += 8, ob += 32) { const j = ord[i], j3 = j * 3, j4 = j * 4;
-      fo[o8] = P[j3]; fo[o8+1] = P[j3+1]; fo[o8+2] = P[j3+2]; fo[o8+3] = Sc[j3] * m; fo[o8+4] = Sc[j3+1] * m; fo[o8+5] = Sc[j3+2] * m;
-      bo[ob] = C[j4]; bo[ob+1] = C[j4+1]; bo[ob+2] = C[j4+2]; bo[ob+3] = C[j4+3]; bo[ob+4] = R[j4]; bo[ob+5] = R[j4+1]; bo[ob+6] = R[j4+2]; bo[ob+7] = R[j4+3]; }
-    S.bufKey = k; return n;
+    const n = S.ord.length, ord = S.ord;
+    const pack = (f, buf) => {
+      const P = o.posAt(f), Sc = o.sclAt(f), m = o.sclMul(f), C = o.rgbaAt(f), R = o.rotAt(f);
+      if (!buf || buf.byteLength < n * REC) buf = new ArrayBuffer(n * REC);
+      const fo = new Float32Array(buf, 0, n * 8), bo = new Uint8Array(buf, 0, n * REC);
+      for (let i = 0, o8 = 0, ob = 24; i < n; i++, o8 += 8, ob += 32) { const j = ord[i], j3 = j * 3, j4 = j * 4;
+        fo[o8] = P[j3]; fo[o8+1] = P[j3+1]; fo[o8+2] = P[j3+2]; fo[o8+3] = Sc[j3] * m; fo[o8+4] = Sc[j3+1] * m; fo[o8+5] = Sc[j3+2] * m;
+        bo[ob] = C[j4]; bo[ob+1] = C[j4+1]; bo[ob+2] = C[j4+2]; bo[ob+3] = C[j4+3]; bo[ob+4] = R[j4]; bo[ob+5] = R[j4+1]; bo[ob+6] = R[j4+2]; bo[ob+7] = R[j4+3]; }
+      return buf;
+    };
+    const k = cur + ":" + S.stamp;
+    if (S.bufNextKey === k) {       // last tick's second endpoint is this tick's first; keep its GPU upload
+      [S.buf, S.bufNext] = [S.bufNext, S.buf]; [S.bufKey, S.bufNextKey] = [S.bufNextKey, S.bufKey];
+      [S.glBuf, S.glBufNext] = [S.glBufNext, S.glBuf]; [S.up, S.upNext] = [S.upNext, S.up];
+    }
+    if (S.bufKey !== k) { S.buf = pack(cur, S.buf); S.bufKey = k; }
+    if (S.nextFrame !== cur) {
+      const nextKey = S.nextFrame + ":" + S.stamp;
+      if (S.bufNextKey !== nextKey) { S.bufNext = pack(S.nextFrame, S.bufNext); S.bufNextKey = nextKey; }
+    }
+    return n;
   }
 
   drawBegin() {
@@ -362,7 +474,7 @@ class Viewer4D {
 
   drawScene(V) {
     const gl = this.gl, b = this.sceneBox, p = this.sprog, U = n => gl.getUniformLocation(p, n);
-    for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
+    for (let i = 0; i < 9; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
     gl.useProgram(p); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
     gl.uniformMatrix4fv(U("uView"), false, V.view); gl.uniformMatrix4fv(U("uProj"), false, V.proj);
     gl.uniform3f(U("uMin"), b[0], b[1], b[2]); gl.uniform3f(U("uExt"), b[3]-b[0], b[4]-b[1], b[5]-b[2]);   // aP is normalized to 0..1
@@ -376,16 +488,24 @@ class Viewer4D {
     if (!S) return;
     const gl = this.gl, n = this.prepare(S, cur, V.view);
     const p = this.prog, U = n => gl.getUniformLocation(p, n);
-    for (let i = 0; i < 5; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
+    for (let i = 0; i < 9; i++) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
     gl.useProgram(p); gl.enable(gl.BLEND); gl.depthMask(false); if (scene) gl.enable(gl.DEPTH_TEST); else gl.disable(gl.DEPTH_TEST);
     gl.uniformMatrix4fv(U("uView"), false, V.view); gl.uniformMatrix4fv(U("uProj"), false, V.proj);
     gl.uniform2f(U("uFocal"), V.f*V.h/2, V.f*V.h/2); gl.uniform2f(U("uViewport"), V.w, V.h);
+    gl.uniform1f(U("uMix"), S.mix);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quad); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     if (!S.glBuf) S.glBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, S.glBuf); if (S.up !== S.bufKey) { gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(S.buf, 0, n * REC), gl.DYNAMIC_DRAW); S.up = S.bufKey; }
     gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, REC, 0); gl.vertexAttribDivisor(1, 1);
     gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, REC, 12); gl.vertexAttribDivisor(2, 1);
     gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, true, REC, 24); gl.vertexAttribDivisor(3, 1);
     gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, REC, 28); gl.vertexAttribDivisor(4, 1);
+    if (S.nextFrame !== Math.floor(Math.max(0, Math.min(cur, S.obj.F - 1)))) {
+      if (!S.glBufNext) S.glBufNext = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, S.glBufNext);
+      if (S.upNext !== S.bufNextKey) { gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(S.bufNext, 0, n * REC), gl.DYNAMIC_DRAW); S.upNext = S.bufNextKey; }
+    }
+    for (const [loc, width, type, normalized, offset] of [[5, 3, gl.FLOAT, false, 0], [6, 3, gl.FLOAT, false, 12], [7, 4, gl.UNSIGNED_BYTE, true, 24], [8, 4, gl.UNSIGNED_BYTE, true, 28]]) {
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, width, type, normalized, REC, offset); gl.vertexAttribDivisor(loc, 1);
+    }
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
   }
 
@@ -395,23 +515,31 @@ class Viewer4D {
     this.drawObjs(V, this.A, this.cur, scene);
     if (this.showTracks) this.drawTracks(V, this.tracks, this.cur);
     if (this.cam && this.showCam) this.drawCams(V.view, V.proj);
-    this.ui.fno.textContent = (this.cur + 1) + " / " + this.nF; this.ui.frame.value = this.cur;
+    this.updateTimeUI();
+  }
+
+  updateTimeUI() {
+    this.ui.fno.textContent = (this.continuous ? (this.cur + 1).toFixed(2) : this.cur + 1) + " / " + this.nF;
+    this.ui.frame.value = this.cur;
+  }
+
+  setContinuous(enabled) {
+    this.continuous = enabled && (!this.A || this.A.obj.tracked);
+    this.ui.frame.step = this.continuous ? "0.01" : "1";
+    if (this.ui.continuous) { this.ui.continuous.checked = this.continuous; this.ui.continuous.disabled = !!this.A && !this.A.obj.tracked; }
+    this.cur = Math.max(0, Math.min(this.nF - 1, this.continuous ? this.playhead : Math.floor(this.playhead)));
   }
 
   loop() {
-    let last = performance.now(); this.acc = 0;
+    let last = performance.now();
     const tick = now => {
       const v = this.ui.inset;
       if (this.playing && this.nF && v && !v.hidden && v.readyState >= 2 && !v.paused) {   // lock to the input video's clock
-        this.cur = Math.min(this.nF - 1, Math.floor(v.currentTime * this.fps + 1e-3));
+        this.playhead = Math.min(this.nF - 1, v.currentTime * this.fps);
       } else if (this.playing && this.nF) {
-        this.acc += (now - last) / 1000 * this.fps * this.speed;
-        if (this.acc >= 1) {
-          const nf = (this.cur + Math.floor(this.acc)) % this.nF;
-          if (nf < this.cur && this.ui.inset && this.ui.inset.duration) this.ui.inset.currentTime = 0;
-          this.cur = nf; this.acc %= 1;
-        }
+        this.playhead = (this.playhead + (now - last) / 1000 * this.fps * this.speed) % this.nF;
       }
+      if (this.playing && this.nF) this.cur = Math.min(this.nF - 1, this.continuous ? this.playhead : Math.floor(this.playhead + 1e-3));
       last = now;
       if (this.visible) this.draw();
       requestAnimationFrame(tick);
@@ -421,6 +549,7 @@ class Viewer4D {
 
   setPlaying(p) {
     this.playing = p; this.ui.play.textContent = p ? "Pause" : "Play"; this.ui.play.setAttribute("aria-pressed", String(!p));
+    this.playhead = this.cur;
     const v = this.ui.inset; if (!v || v.hidden) return;
     if (p) { v.currentTime = (this.cur / this.fps) % (v.duration || 1); v.play().catch(() => {}); } else v.pause();
   }
@@ -441,7 +570,8 @@ class Viewer4D {
     });
     cv.addEventListener("wheel", e => { e.preventDefault(); this.radius = Math.max(0.05, Math.min(50, this.radius * Math.exp(e.deltaY * 0.001))); this.epoch++; }, { passive: false });
     ui.play.addEventListener("click", () => this.setPlaying(!this.playing));
-    ui.frame.addEventListener("input", e => { this.setPlaying(false); this.cur = +e.target.value; if (ui.inset && !ui.inset.hidden) ui.inset.currentTime = this.cur / this.fps; });
+    ui.frame.addEventListener("input", e => { this.setPlaying(false); this.cur = this.playhead = +e.target.value; if (ui.inset && !ui.inset.hidden) ui.inset.currentTime = this.cur / this.fps; });
+    if (ui.continuous) ui.continuous.addEventListener("change", e => this.setContinuous(e.target.checked));
     ui.reset.addEventListener("click", () => { this.V3 = this.V0.slice(); this.radius = this.radius0; this.epoch++; });
     if (ui.scene) ui.scene.addEventListener("change", e => { this.showScene = e.target.checked; });
     if (ui.camchk) ui.camchk.addEventListener("change", e => { this.showCam = e.target.checked; });
@@ -455,6 +585,7 @@ class Viewer4DCmp extends Viewer4D {
     const tok = ++this.tokB; this.ui.load.hidden = false; this.ui.load.textContent = "Loading " + (label || "baseline") + "…";
     try {
       const bufs = await Promise.all(objects.map(getBin)), objs = await Promise.all(bufs.map((b, i) => parseAny(b, objects[i]))); if (tok !== this.tokB) return;
+      this.buildTracks(objs);
       const m = objs.length > 1 ? mergeObjects(objs) : objs[0]; this.B = side(m); this.tracksB = m.tracks;
       this.ui.load.hidden = true;
     } catch (e) { if (tok === this.tokB) this.ui.load.textContent = "Could not load " + (label || "baseline") + " (" + e.message + ")."; }
@@ -471,7 +602,7 @@ class Viewer4DCmp extends Viewer4D {
     }
     gl.disable(gl.SCISSOR_TEST);
     if (this.cam && this.showCam) this.drawCams(V.view, V.proj);
-    this.ui.fno.textContent = (this.cur + 1) + " / " + this.nF; this.ui.frame.value = this.cur;
+    this.updateTimeUI();
   }
 }
 window.Viewer4D = Viewer4D; window.Viewer4DCmp = Viewer4DCmp;
