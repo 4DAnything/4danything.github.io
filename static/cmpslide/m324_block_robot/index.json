@@ -1,0 +1,68 @@
+{
+  "tile": 384,
+  "cols": 3,
+  "views": 3,
+  "methods": [
+    "ours",
+    "m3t4",
+    "actionmesh",
+    "mesh4d",
+    "sam3d_perframe",
+    "genia",
+    "lift4d",
+    "pad3r"
+  ],
+  "frames": 16,
+  "fps": 16.0,
+  "dataset": "motion324",
+  "sequence": "25015f5f3ac64d2dac358f8c17af5128-0-walk-GLTF_created_0_rootJoint",
+  "camera_names": [
+    "cam1",
+    "cam2",
+    "cam3"
+  ],
+  "source_repo": "Testing12321111/ff4d-sam3d-prep",
+  "source_prefix": "eval_sets/results/2026-11-10",
+  "source_frames": {
+    "ours": [
+      16,
+      16,
+      16
+    ],
+    "m3t4": [
+      16,
+      16,
+      16
+    ],
+    "actionmesh": [
+      16,
+      16,
+      16
+    ],
+    "mesh4d": [
+      16,
+      16,
+      16
+    ],
+    "sam3d_perframe": [
+      16,
+      16,
+      16
+    ],
+    "genia": [
+      16,
+      16,
+      16
+    ],
+    "lift4d": [
+      16,
+      16,
+      16
+    ],
+    "pad3r": [
+      16,
+      16,
+      16
+    ]
+  }
+}

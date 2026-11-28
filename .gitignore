@@ -1,0 +1,6 @@
+/scripts/
+__pycache__/
+*.partial.mp4
+*.tmp
+/static/viz/**/*.json
+/static/teaser/**/*.json

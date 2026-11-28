@@ -1,0 +1,25 @@
+{
+  "tile": 384,
+  "cols": 4,
+  "views": 4,
+  "methods": [
+    "ours",
+    "m3t4",
+    "actionmesh",
+    "mesh4d",
+    "sam3d_perframe",
+    "genia",
+    "lift4d",
+    "pad3r"
+  ],
+  "frames": 32,
+  "fps": 6.0,
+  "dataset": "syn4d",
+  "sequence": "syn4d_soviet_group_seq_000017_1_30916fd8",
+  "camera_names": [
+    "view_0",
+    "view_1",
+    "view_2",
+    "view_3"
+  ]
+}
